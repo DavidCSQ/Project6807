@@ -164,8 +164,42 @@ namespace fab_translation {
         //      - collect all intersection edges and return
         void Slicing_bruteforce(mesh::TriMesh<T>& tri_mesh, 
             std::vector<std::vector<IntersectionEdge<T>>> &intersection_edges) {
-            
+            intersection_edges.clear();
+            for(T cz = _bottom;cz<=_top;cz+=_dz){
+                std::vector<IntersectionEdge<T>> edges;
+                edges.clear();
+                geometry::Plane<T> currentp = geometry::Plane<T>(Vector3<T>(0,0,cz),Vector3<T>(0,0,1));
+                for (int i = 0;i < tri_mesh.elements().size();i++) {
+                    geometry::Triangle<T> current = geometry::Triangle<T>(tri_mesh.vertices(tri_mesh.elements(i)[0]),tri_mesh.vertices(tri_mesh.elements(i)[1]),tri_mesh.vertices(tri_mesh.elements(i)[2]));
+                    if (current.IntersectPlane(currentp).size()==0){//skip this triangle if it has no intersection
+                        continue;
+                    }else{
+                        bool flag = true;//flag turns false means this edge is the same as someone stored before
+                        for (int k = 0;k<edges.size();k++){
+                            if(((!Vertex_Cmp(current.IntersectPlane(currentp)[0],edges[k].p0()))&&(!Vertex_Cmp(current.IntersectPlane(currentp)[1],edges[k].p1())))||((!Vertex_Cmp(current.IntersectPlane(currentp)[0],edges[k].p1()))&&(!Vertex_Cmp(current.IntersectPlane(currentp)[1],edges[k].p0())))){
+                                flag = false;
+                            }
+                        }
+                        if (flag==true){
+                            edges.push_back(IntersectionEdge<T>(current.IntersectPlane(currentp)[0],current.IntersectPlane(currentp)[1]));
+                        }
+                    }
+                }
+                intersection_edges.push_back(edges);
+            }
         }
+        bool Vertex_Cmp(Vector3<T> A, Vector3<T> B) {
+            if ((A(0) < B(0) - 2e-6)||(A(0) > B(0) + 2e-6)) {
+                return true;
+            } else if((A(1) < B(1) - 2e-6)||(A(1) > B(1) + 2e-6)){
+                return true;
+            } else if((A(2) < B(2) - 2e-6)||(A(2) > B(2) + 2e-6)){
+                return true;
+            } else{
+                return false;
+            }
+        }
+        
 
         // TODO: HW1
         // Part 3.1: Accelerated Slicing - 6.839 only
@@ -197,7 +231,48 @@ namespace fab_translation {
         void CreateContour(mesh::TriMesh<T>& tri_mesh,
             std::vector<std::vector<IntersectionEdge<T>>> &intersection_edges,
             std::vector<std::vector<std::vector<Vector3<T>>>>& contours) {
-
+            std::vector<std::vector<IntersectionEdge<T>>> edges = intersection_edges;
+            contours.clear();
+            for (int i = 0;i<intersection_edges.size();i++){
+                std::vector<std::vector<Vector3<T>>> layer;
+                layer.clear();
+                while(edges[i].size()!=0){
+                    std::vector<Vector3<T>> currentc;
+                    currentc.clear();
+                    currentc.push_back(edges[i][0].p0());
+                    currentc.push_back(edges[i][0].p1());
+                    edges[i].erase(edges[i].begin(),edges[i].begin()+1);
+                    bool flag = true;//keeps finding the current contour until exhausted
+                    while(flag){
+                        flag = false;
+                        for (int j = 0;j<edges[i].size();j++){
+                            if (!Vertex_Cmp(edges[i][j].p0(),currentc[currentc.size()-1])){
+                                currentc.push_back(edges[i][j].p1());
+                                edges[i].erase(edges[i].begin()+j,edges[i].begin()+j+1);
+                                flag = true;
+                                continue;
+                            }else if(!Vertex_Cmp(edges[i][j].p1(),currentc[currentc.size()-1])){
+                                currentc.push_back(edges[i][j].p0());
+                                edges[i].erase(edges[i].begin()+j,edges[i].begin()+j+1);
+                                flag = true;
+                                continue;
+                            }
+                            
+                        }
+                    }
+                    //layer.push_back(currentc);
+                    if(!Vertex_Cmp(currentc[currentc.size()-1],currentc[0])){//delete the points if it is the same as the first one
+                        currentc.erase(currentc.end()-1,currentc.end());
+                        layer.push_back(currentc);
+                    }
+                    //if(currentc.size()!=2){
+                    //    layer.push_back(currentc);
+                    //}
+                }
+                if (layer.size()!=0){
+                    contours.push_back(layer);
+                }
+            }
         }
 
         // TODO: HW1 (Optional)

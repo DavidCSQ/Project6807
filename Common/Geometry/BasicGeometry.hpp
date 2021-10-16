@@ -57,9 +57,55 @@ namespace geometry {
         //      - enumerate three edges of the triangle and do intersection individually
         //      - consider the case that no intersection
         //      - consider how to avoid repeated intersection points in returned list
+        bool indv(Vector3<T> v0, Vector3<T> v1,Plane<T> p, Vector3<T>& tbd){
+            if (((v0.dot(p.normal())-v1.dot(p.normal()))==0)&&((p.p().dot(p.normal())-v1.dot(p.normal()))==0)){
+                return false;
+            }
+            T lam = (p.p().dot(p.normal())-v1.dot(p.normal()))/(v0.dot(p.normal())-v1.dot(p.normal()));
+            if ((lam>=0)&&(lam<=1)){
+                tbd = lam*v0+(1-lam)*v1;
+                return true;
+            }
+            return false;
+        }
+        bool Vertex_Cmp(Vector3<T> A, Vector3<T> B) {
+            if ((A(0) < B(0) - 2e-6)||(A(0) > B(0) + 2e-6)) {
+                return true;
+            } else if((A(1) < B(1) - 2e-6)||(A(1) > B(1) + 2e-6)){
+                return true;
+            } else if((A(2) < B(2) - 2e-6)||(A(2) > B(2) + 2e-6)){
+                return true;
+            } else{
+                return false;
+            }
+        }
         std::vector<Vector3<T>> IntersectPlane(Plane<T> p) {
             std::vector<Vector3<T>> intersections;
             intersections.clear();
+            Vector3<T> A1;
+            Vector3<T> A2;
+            Vector3<T> A3;
+            T dist;
+            if(p.onPlane(_vertices[0],dist)&&p.onPlane(_vertices[1],dist)&&p.onPlane(_vertices[2],dist)){//if the triangle is on the plane, ignore it 
+                return intersections;
+            }
+            bool a = indv(_vertices[0],_vertices[1],p,A1);
+            bool b = indv(_vertices[1],_vertices[2],p,A2);
+            bool c = indv(_vertices[2],_vertices[0],p,A3);
+            if(a){//make sure that there are always exactly two points stored
+                if((b)&&(Vertex_Cmp(A1,A2))){
+                    intersections.push_back(A1);
+                    intersections.push_back(A2);
+                } else if((c)&&(Vertex_Cmp(A1,A3))){
+                    intersections.push_back(A1);
+                    intersections.push_back(A3);
+                }
+            }else if(b){
+                if((c)&&(Vertex_Cmp(A2,A3))){
+                    intersections.push_back(A2);
+                    intersections.push_back(A3);
+                }
+            }
             return intersections;
         }
 
