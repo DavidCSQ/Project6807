@@ -1,5 +1,6 @@
 #include <Eigen/Core>
 #include <limits>
+#include <math.h>
 
 // TODO: HW3
 // Assignment 3, Part 2.1. 
@@ -12,5 +13,9 @@ void ComputeLinearSkinningWeights(
 	Eigen::MatrixXd& W) 
 {
 	W.resize(V.rows(), C.rows());
-	/* Implement your code here. */
+	for(int i = 0;i<V.rows();i++){
+	    for(int j = 0;j<C.rows();j++){
+	        W(i,j) = 1/sqrt((V(i,0)-C(j,0))*(V(i,0)-C(j,0))+(V(i,1)-C(j,1))*(V(i,1)-C(j,1))+(V(i,2)-C(j,2))*(V(i,2)-C(j,2)));
+        }
+    }
 }
