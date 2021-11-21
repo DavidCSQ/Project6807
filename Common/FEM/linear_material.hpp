@@ -59,10 +59,33 @@ namespace materials {
             const T mu = Material<dim, T>::mu();
             const T lambda = Material<dim, T>::lambda();
             typename Material<dim, T>::MatrixDim2T K;
-            /* Implement your code here */
-            
+            for (int i = 0;i<9;i++){
+                for(int j = 0;j<9;j++){
+                    K(i,j) = 0;
+                }
+            }
+            K(0,0) = 2*mu+lambda;
+            K(4,4) = 2*mu+lambda;
+            K(8,8) = 2*mu+lambda;
+            K(0,4) = lambda;
+            K(0,8) = lambda;
+            K(4,0) = lambda;
+            K(4,8) = lambda;
+            K(8,0) = lambda;
+            K(8,4) = lambda;
+            K(1,1) = mu;
+            K(1,3) = mu;
+            K(2,2) = mu;
+            K(2,6) = mu;
+            K(3,1) = mu;
+            K(3,3) = mu;
+            K(5,5) = mu;
+            K(5,7) = mu;
+            K(6,2) = mu;
+            K(6,6) = mu;
+            K(7,5) = mu;
+            K(7,7) = mu;
             return K;
-
         }
 
     private:

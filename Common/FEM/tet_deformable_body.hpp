@@ -100,8 +100,27 @@ namespace materials {
             for (int i = 0;i < tet_num;i++) {
                 const Eigen::VectorXi elements = this->undeformed_mesh_.element(i);             // get the element of the tet
                 const Material<3, T>& material = this->materials_[this->material_id_[i]].get(); // get the material model
-
+                Eigen::Matrix<T, 3, 3> Ds;  // deformed shape matrix
+                for (int j = 0;j < 3;j++)
+                    Ds.col(j) = vertices.col(elements[j]) - vertices.col(elements[3]);
+                Eigen::Matrix<T, 3, 3> F = Ds * Dm_inv[i];
+                T V = tet_volume[i];
+                const Eigen::Matrix<T, 9, 9> dPdF = material.StressDifferential(F);
+                Eigen::Matrix<T,9,12> dPdx = dPdF*dFdx[i];
+                Eigen::Matrix<T,12,12> dfdx = dFdx[i].transpose()*dPdx;
                 /* Implement your code here */
+                for (int x = 0;x<4;x++){
+                    for(int xi = 0;xi<3;xi++){
+                        int col = elements[x]*3+xi;
+                        for(int y = 0;y<4;y++){
+                            for(int yi = 0;yi<3;yi++){
+                                int row = elements[y]*3+yi;
+                                T value = V*dfdx(y*3+yi,x*3+xi);
+                                triplet_list.push_back(Eigen::Triplet<T>(row,col,value));
+                            }
+                        }
+                    }
+                }
                 
             }
             Eigen::SparseMatrix<T> K(vertex_num * 3, vertex_num * 3);

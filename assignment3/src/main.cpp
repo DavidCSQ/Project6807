@@ -44,7 +44,11 @@ void test(std::string testcase) {
 	else {
 		std::cout << "Failed to tetrahedralize mesh." << std::endl;
 	}
-
+    std::string output = std::string(PROJECT_SOURCE_DIR) + "/data/assignment4/" + testcase + "_tetmesh.txt";
+	std::ofstream fo(output);
+	fo << V.rows()<<'\n'<<V<<'\n';
+    fo << T.rows()<<'\n'<<T<<'\n';;
+	fo.close();
 	// load handles
 	WeightHandles handles;
 	handles.load_handle_file(handle_filename);
@@ -68,9 +72,9 @@ void test(std::string testcase) {
 
 void run_all() {
 	test("frame");
-	test("spot");
-	test("tyra");
-	test("bunny");
+	//test("spot");
+	//test("tyra");
+	//test("bunny");
 
 	// std::cerr << "finished. please to into the results folder and run [python grade.py] to check your results. " << std::endl;
 }

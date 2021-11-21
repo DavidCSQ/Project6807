@@ -12,9 +12,9 @@
 #include <fstream>
 #include <set>
 
-const size_t num_x_vertices = 4; //number of nodes (vertices) in x dimension of our mesh
-const size_t num_y_vertices = 2; //number of nodes (vertices) in y dimension of our mesh
-const size_t num_z_vertices = 2; //number of nodes (vertices) in z dimension of our mesh
+const size_t num_x_vertices = 20; //number of nodes (vertices) in x dimension of our mesh
+const size_t num_y_vertices = 8; //number of nodes (vertices) in y dimension of our mesh
+const size_t num_z_vertices = 8; //number of nodes (vertices) in z dimension of our mesh
 const double spacing = 0.025; //size of each edge, 5 cm
 
 void write_facet(std::ofstream& file, Eigen::Vector3d p0, Eigen::Vector3d p1, Eigen::Vector3d p2) {
@@ -136,6 +136,24 @@ void get_K_and_fe(const materials::TetrahedralMesh<double> tet_mesh, // the tet 
             force_elastic[index_mapping[i]] = force_elastic_full(i % 3, i / 3);
 }
 
+void get_fe(const materials::TetrahedralMesh<double> tet_mesh, // the tet mesh with rest configuration
+    const materials::TetDeformableBody<double> tet_def_body, 
+    const Eigen::MatrixXd vertices,                                  // the vertices coordinates in current configuration (size 3 * N)
+    const std::vector<bool>& index_mask,                             // the index mask, which obtained from set_boundary_conditions
+        Eigen::VectorXd& force_elastic ){
+    const size_t rows = tet_mesh.vertex().rows();
+    const size_t cols = tet_mesh.vertex().cols();
+    const size_t total_dim = rows * cols;
+    std::vector<int> index_mapping(total_dim);
+    int dofs = 0;
+    for (size_t i = 0;i < total_dim;i++)
+        if (index_mask[i])
+            index_mapping[i] = dofs ++;
+    Eigen::Matrix3Xd force_elastic_full = tet_def_body.ComputeElasticForce(vertices);
+    force_elastic = Eigen::VectorXd::Zero(dofs);
+    for (size_t i = 0;i < total_dim;i++)
+        if (index_mask[i])
+            force_elastic[index_mapping[i]] = force_elastic_full(i % 3, i / 3);}
 void test_linear_material() {
 
     std::cerr << "------------------------- Linear Material Model --------------------------------" << std::endl;
@@ -257,14 +275,36 @@ void test_nonlinear_material() {
         /* Implement your code here */
 
         // Step 1: linearize the function around current solution vertices to get K and fe
-
+        get_K_and_fe(tet_mesh, tet_def_body, vertices, index_mask, K, fe);
         // Step 2: solve K*u = fe + f_ext
-
+        Eigen::VectorXd u = solver.compute(K).solve(f_ext+fe);
         // Step 3: line search for step size, so that |fe(vertices + u * step) + f_ext| < |fe(vertices) + f_ext|
-
+        double step = 2;
+        double target = (fe+f_ext).norm();
+        for(int i = 0;i<10;i++){
+            int cnt = 0;
+            Eigen::MatrixXd verticesnew = vertices;
+            for (size_t i = 0;i < num_vertices; i++) 
+                for (size_t j = 0;j < 3;j++) {
+                    if (index_mask[i * 3 + j]) {
+                        verticesnew(j, i) += u(cnt++)*step;
+                    }
+                }
+            get_fe(tet_mesh, tet_def_body, verticesnew, index_mask, fe);
+            if((fe+f_ext).norm()<target) break;
+            step*=0.6;
+        }
         // Step 4: update vertices = vertices + u * step
-
+        int cnt = 0;
+        for (size_t i = 0;i < num_vertices; i++) 
+            for (size_t j = 0;j < 3;j++) {
+                if (index_mask[i * 3 + j]) {
+                    vertices(j, i) += u(cnt++)*step;
+                }
+            }
         // Step 5: terminate Newton's method if |fe(vertices + u * step) + f_ext| < eps
+        get_fe(tet_mesh, tet_def_body, vertices, index_mask, fe);
+        if ((fe+f_ext).norm()<1e-6) break;  
     }
 
     // validate results
@@ -293,11 +333,125 @@ void set_customized_boundary_conditions(const materials::TetrahedralMesh<double>
     std::vector<bool>& index_mask // index_mask[i * 3 + j] = false if the coordinate j (0<=j<=2) of vertex i is removed from variale list
     ) {
     /* Implement your code here */
+    const size_t rows = tet_mesh.vertex().rows();
+    const size_t cols = tet_mesh.vertex().cols();
+    const size_t total_dim = rows * cols;
+
+    index_mask.resize(total_dim);
+    for (size_t i = 0;i < total_dim;i++)
+        index_mask[i] = true;
+
+    // fix the vertices on the left face and remove them from variable list
+    for (size_t i = 0; i < tet_mesh.vertex().cols(); ++i) {
+        if (tet_mesh.vertex()(0, i) <= -5) {
+            for (size_t j = 0;j < 3;j++) {
+                index_mask[i * 3 + j] = false;
+            }
+        }
+    }
+
+    // apply external forces on each nodes of bottom right region
+    Eigen::VectorXd f_ext_full = Eigen::VectorXd::Zero(total_dim);
+    for (size_t i = 0; i < tet_mesh.vertex().cols(); ++i) {
+        if (tet_mesh.vertex()(0, i) > 5) {
+            f_ext_full(3 * i + 2) = -500000.0;
+        }
+    }
+    // trim f_ext_full
+    std::vector<int> index_mapping(total_dim);
+    int dofs = 0;
+    for (size_t i = 0;i < total_dim;i++)
+        if (index_mask[i])
+            index_mapping[i] = dofs ++;
+    f_ext = Eigen::VectorXd(dofs); // trimed external forces
+    for (size_t i = 0;i < total_dim; i++)
+        if (index_mask[i])
+            f_ext[index_mapping[i]] = f_ext_full[i];
 }
 
 void test_customized_model() {
     /* Implement your code here */
+    std::cerr << "------------------------- Linear Customized Model --------------------------------" << std::endl;
+
+    const int dim = 3;
+
+    //youngs =  10^7, poisson ratio = 0.45 - similar to that of silicone rubber
+    materials::LinearElasticityMaterial<dim, double> linear_elasticity_material(10000000, 0.45);
+    std::string input = std::string(PROJECT_SOURCE_DIR) + "/data/assignment4/" + "frame" + "_tetmesh.txt";
+	std::fstream myfile(input,std::ios_base::in);
+    double n;
+    size_t num_vertices;
+    myfile>>num_vertices;
+    materials::Matrix3X<double> V;V.resize(3,num_vertices);
+    materials::Matrix4Xi<double> T;
+    for (int i = 0;i<num_vertices;i++){
+        myfile>>n;V(0,i) = n;
+        myfile>>n;V(1,i) = n;
+        myfile>>n;V(2,i) = n;
+    }
+    size_t num_elements;
+    myfile>>num_elements;T.resize(4,num_elements);
+    for (int i = 0;i<num_elements;i++){
+        myfile>>n;T(0,i) = n;
+        myfile>>n;T(1,i) = n;
+        myfile>>n;T(2,i) = n;
+        myfile>>n;T(3,i) = n;
+    } 
+    //const size_t num_vertices = num_x_vertices * num_y_vertices * num_z_vertices;
+    materials::TetrahedralMesh<double> tet_mesh = materials::TetrahedralMesh<double>(V,T);
+    //    materials::TetrahedralMeshCuboid<double>(Eigen::Vector3i(num_x_vertices, num_y_vertices, num_z_vertices), spacing);
+
+    //What does our undeformed mesh look like?
+    write_tet_mesh(std::string(PROJECT_SOURCE_DIR) + "/data/assignment4/mymesh_rest.stl", tet_mesh.vertex(), tet_mesh.element());
+
+    std::vector<bool> index_mask;
+    Eigen::VectorXd f_ext;
+    set_customized_boundary_conditions(tet_mesh, f_ext, index_mask);
+
+    materials::TetDeformableBody<double> tet_def_body(linear_elasticity_material, tet_mesh.vertex(), 0.4, tet_mesh);
+
+    Eigen::SparseMatrix<double> K;
+    Eigen::VectorXd fe;
+    get_K_and_fe(tet_mesh, tet_def_body, tet_mesh.vertex(), index_mask, K, fe);
+    
+    // solve K*u = f_ext by eigen cg solver
+    Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Upper> solver;
+    solver.setMaxIterations(1000000); //just a large number
+
+    std::cout << "Time to solve" << std::endl;
+    Eigen::VectorXd u = solver.compute(K).solve(f_ext);
+
+    //get the final positions and shove them in u
+    Eigen::Matrix<double, 3, Eigen::Dynamic> x = tet_mesh.vertex();
+    int cnt = 0;
+    for (size_t i = 0;i < num_vertices; i++) 
+        for (size_t j = 0;j < 3;j++) {
+            if (index_mask[i * 3 + j]) {
+                x(j, i) += u(cnt++);
+            }
+    }
+
+
+    write_tet_mesh(std::string(PROJECT_SOURCE_DIR) + "/data/assignment4/mydeformed_linear.stl", x, tet_mesh.element());
+
+    auto info = solver.info();
+    std::string info_message;
+    if (info == 0) {
+        info_message = "Success";
+    } else if (info == 1) {
+        info_message = "NumericalIssue";
+    } else if (info == 2) {
+        info_message = "NoConvergence";
+    } else if (info == 3) {
+        info_message = "InvalidInput";
+    } else {
+        info_message = "UnknownError";
+    }
+
+    std::cout << "solve successful? " << info_message << std::endl;
 }
+
+
 
 int main(int argc, char *argv[])
 {
