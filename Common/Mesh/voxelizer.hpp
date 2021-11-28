@@ -373,7 +373,7 @@ namespace mesh {
 				for (int j = 0; j < ny - 1; ++j)
 					for (int k = nz - 2; k >= 0; --k) {
 						if (!_voxels[i][j][k]) continue;
-						printf("i: %d, j: %d, k: %d\n", i, j, k);
+						//printf("i: %d, j: %d, k: %d\n", i, j, k);
 
 						// only store the top points
 						for (int l = 1; l < 8; l = l + 2) {
@@ -383,14 +383,14 @@ namespace mesh {
 						}
 						break;
 					}
-			for (auto i : force) {
-				std::cout << i << std::endl;
-			}
+			//for (auto i : force) {
+			//	std::cout << i << std::endl;
+			//}
 			std::set<int> forceSet(force.begin(), force.end());
 			force.assign(forceSet.begin(), forceSet.end());
-			printf("force size: %d\n", force.size());
+			//printf("force size: %d\n", force.size());
 
-			std::cout << "top-z done" << std::endl;
+			//std::cout << "top-z done" << std::endl;
 
 			// find left-most vertices
 			for (int j = 0; j < ny - 1; ++j)
@@ -398,7 +398,7 @@ namespace mesh {
 					for (int i = 0; i < nx - 1; ++i) {
 						if (!_voxels[i][j][k]) continue;
 
-						printf("i: %d, j: %d, k: %d\n", i, j, k);
+						//printf("i: %d, j: %d, k: %d\n", i, j, k);
 
 						// only store the top points
 						for (int l = 0; l < 4; l++) {
@@ -408,7 +408,7 @@ namespace mesh {
 						}
 						break;
 					}
-			std::cout << "left-most done" << std::endl;
+			//std::cout << "left-most done" << std::endl;
 
 			// find right-most vertices
 			for (int j = 0; j < ny - 1; ++j)
@@ -424,13 +424,77 @@ namespace mesh {
 						}
 						break;
 					}
-			std::cout << "right-most done" << std::endl;
+			//std::cout << "right-most done" << std::endl;
 
 			std::set<int> fixedSet(fixed.begin(), fixed.end());
 			fixed.assign(fixedSet.begin(), fixedSet.end());
-			printf("fixed size: %d\n", fixed.size());
+			//printf("fixed size: %d\n", fixed.size());
 
 			return materials::HexahedralMesh<T>(vMatrix, eMatrix);
+		}
+	const bool ConvertToHexMeshm(materials::Matrix3X<T>& vMatrix,materials::Matrix8Xi<T>& eMatrix,double& num_voxels) {
+			std::vector<Vector3<T>> vertices;
+			std::vector<Vector8i> elements;
+			std::map<int, int> idx_map;
+			idx_map.clear();
+			// number of possible vertices, not voxels !!
+			const int nx = _nvoxel[0] + 1, ny = _nvoxel[1] + 1, nz = _nvoxel[2] + 1;
+			int count = 0;
+			num_voxels = 0;
+
+			printf("nx: %d, ny: %d, nz: %d\n", nx - 1, ny - 1, nz - 1);
+
+			std::vector<Vector3<int>> corners({
+				Vector3<int>(0, 0, 0),
+				Vector3<int>(0, 0, 1),
+				Vector3<int>(0, 1, 0),
+				Vector3<int>(0, 1, 1),
+				Vector3<int>(1, 0, 0),
+				Vector3<int>(1, 0, 1),
+				Vector3<int>(1, 1, 0),
+				Vector3<int>(1, 1, 1)
+				});
+
+			// loop through number of voxels 
+			for (int i = 0; i < nx - 1; ++i)
+				for (int j = 0; j < ny - 1; ++j)
+					for (int k = 0; k < nz - 1; ++k) {
+						if (!_voxels[i][j][k]) continue;
+						num_voxels++;
+
+						Vector8i element;
+						// push eight vertices to the vertices and elements
+						for (int l = 0; l < 8; ++l) {
+							int idx = (i + corners[l][0]) * ny * nz + (j + corners[l][1])
+								* nz + (k + corners[l][2]);
+
+							if (idx_map.find(idx) == idx_map.end()) {
+								idx_map[idx] = count;
+								count += 1;
+								element(l) = idx_map[idx];
+								Vector3<int> vIndex(i + corners[l][0], j + corners[l][1], k + corners[l][2]);
+								vertices.push_back(_pmin + vIndex.cast<T>() * _dx);
+							}
+							else {
+								element(l) = idx_map[idx];
+							}
+						}
+						elements.push_back(element);
+					}
+
+			// create vertice and element matrix
+			vMatrix.resize(3, vertices.size());
+			eMatrix.resize(8, elements.size());
+            //std::cout<<vMatrix.size();
+			for (int i = 0; i < vertices.size(); ++i) {
+				vMatrix.col(i) = vertices[i];
+			}
+
+			for (int i = 0; i < elements.size(); ++i) {
+				eMatrix.col(i) = elements[i];
+			}
+            //std::cout<<vMatrix.size();
+			return true;
 		}
 
 	private:

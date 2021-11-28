@@ -115,7 +115,29 @@ namespace geometry {
         // Input: a ray, the ray is represented by an origin position and a direction vector
         // Output: return a real number t, the intersection is origin + dir * t, t = -1 means no intersection
         const T IntersectRay(const Vector3<T>& origin, const Vector3<T>& dir) const {
-            const T flag = static_cast<T>(-1.0);    
+            const T flag = static_cast<T>(-1.0);
+            T a;
+            T b;
+            T x1 = _vertices[0](0);
+            T x2 = _vertices[1](0);
+            T x3 = _vertices[2](0);
+            T y1 = _vertices[0](1);
+            T y2 = _vertices[1](1);
+            T y3 = _vertices[2](1);
+            T z1 = _vertices[0](2);
+            T z2 = _vertices[1](2);
+            T z3 = _vertices[2](2);
+            T x4 = origin(0);
+            T y4 = origin(1);
+            if (((x1-x3)*(y2-y3))==((y1-y3)*(x2-x3))){//make shure that the triangle is not parallel to the dir
+                return flag;
+            }//the intersection is represented as a*v1+b*v2+(1-a-b)*v3
+            a = ((x4-x3)*(y2-y3)-(y4-y3)*(x2-x3))/((x1-x3)*(y2-y3)-(y1-y3)*(x2-x3));
+            b = ((x4-x3)*(y1-y3)-(y4-y3)*(x1-x3))/((x2-x3)*(y1-y3)-(y2-y3)*(x1-x3));
+            if ((a<=1)&&(a>=0)&&(b<=1)&&(b>=0)&&((a+b)<=1)){//if a and b are both smaller than 1, then it is valid
+                T t = a*z1+b*z2+(1-a-b)*z3;
+                return t;
+            }
             return flag;
         }
 

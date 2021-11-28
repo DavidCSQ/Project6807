@@ -26,7 +26,30 @@ namespace geometry {
     // sort your return vector for comparing with 
     // the reference result
     template <typename T>
-    std::vector<Vector2<T>> ParetoFront2D(const std::vector<Vector2<T>> &points) {
-        return points; // you should change this line as well
+    bool comp(Vector2<T> a,Vector2<T> b){
+        if (a(0)<b(0)){
+            return true;
+        }else if(a(0)==b(0)&&a(1)<b(1)){
+            return true;
+        }else{
+            return false;
+        }
     }
+    template <typename T>
+    std::vector<Vector2<T>> ParetoFront2D(const std::vector<Vector2<T>> &points) {
+        std::vector<Vector2<T>> results = points;
+        std::sort(results.begin(),results.end(),comp<T>);
+        T curry = results[0](1);
+        std::vector<Vector2<T>> finalresults;
+        finalresults.clear();
+        finalresults.push_back(results[0]);
+        for (int i = 1;i<results.size();i++){
+            if(results[i](1)<curry){
+                finalresults.push_back(results[i]);
+                curry = results[i](1);
+            }
+        }
+        return finalresults; // you should change this line as well
+    }
+    
 }

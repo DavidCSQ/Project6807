@@ -1,6 +1,8 @@
 #define TC_USE_DOUBLE
 #define TC_IMAGE_IO
 #include "taichi.h"
+#include "math.h"
+#include <algorithm>
 using namespace taichi;
 
 int window_width = 1080, window_height = (window_width - 200) / 2;
@@ -45,9 +47,20 @@ class TopologyOptimization {
         break;
       case 2:  // Cantilever Beam (TODO, HW5 part 1.3)
 		// ...
+        f[cell_res[0]][static_cast<int>(cell_res[1]/2)][1] = -1;
+        boundary_condition.push_back({Vector2i(0, 0), 1, 0});
+        boundary_condition.push_back({Vector2i(0, 0), 0, 0});
+        boundary_condition.push_back({Vector2i(0, cell_res[1]), 1, 0});
+        boundary_condition.push_back({Vector2i(0, cell_res[1]), 0, 0});
         break;
       case 3:  // Bridge (TODO, HW5 part 1.3)
 		// ...
+        for (int i = 0; i < node_res[0]; i++)
+          f[i][cell_res[1]][1] = -1;
+        boundary_condition.push_back({Vector2i(0, 0), 1, 0});
+        boundary_condition.push_back({Vector2i(0, 0), 0, 0});
+        boundary_condition.push_back({Vector2i(cell_res[0],0), 1, 0});
+        boundary_condition.push_back({Vector2i(cell_res[0],0), 0, 0});
         break;
     }
   }
@@ -84,6 +97,12 @@ class TopologyOptimization {
   }
 
   // Task 1:
+  double minm(double a,double b){
+    return (a<b)? a:b;
+  }
+  double maxm(double a,double b){
+    return (a<b)? b:a;
+  }
   Array<real> optimality_criteria(const Array<real> &s) {
     Array<real> new_density = density.same_shape();
     // TODO: HW5
@@ -92,11 +111,22 @@ class TopologyOptimization {
     //    minimum_density, change_limit, volume_fraction, cell_res, density here
 	  // ...
     // you should replace the following line with your own code
-    for (int i = 0;i < cell_res[0];i++) 
+    double laml = 0;
+    double lamh = 1e15;
+    while (laml*(1+1e-15)<lamh){
+      double lam = (laml+lamh)/2;
+      double S = 0;
+      for (int i = 0;i < cell_res[0];i++) 
         for (int j = 0;j < cell_res[1];j++) {
-          new_density[i][j] = density[i][j];
+          new_density[i][j] = minm(1,(minm(density[i][j]+change_limit,maxm(minimum_density,maxm(density[i][j]-change_limit,density[i][j]*sqrt(s[i][j]/lam))))));
+          S += new_density[i][j];
         }
-
+      if (S<volume_fraction*(cell_res[0])*(cell_res[1])){
+        lamh = lam;
+      }else{
+        laml = lam;
+      }
+    }
     return new_density;
   }
 
@@ -110,7 +140,16 @@ class TopologyOptimization {
           // TODO: HW5
           // part 1.2 Sensitivity filtering
           // TODO: replace the follow line with filtering.
-           s_filtered[i][j] = s[i][j];
+          double up = 0;
+          double down = 0;
+          for (int k = 0; k < cell_res[0]; k++) {
+            for (int l = 0; l < cell_res[1]; l++) {
+              double w = (filter_radius-sqrt((k-i)*(k-i)+(l-j)*(l-j))>0)?filter_radius-sqrt((k-i)*(k-i)+(l-j)*(l-j)):0 ;
+              up+=w*s[k][l]*density[k][l];
+              down+=w*density[k][l];
+            }
+          }
+          s_filtered[i][j] = up/down;
           // NOTE: density and s have size of ``cell_res''.
           //       Be careful not to access the undefined region outside the
           //       range.
@@ -158,7 +197,7 @@ TopologyOptimization opt;
 int main() {
   GUI gui("Topology Optimization", Vector2i(window_width, window_height),
           false);
-  int res = 50, penalty = 3, bc_type = 1;
+  int res = 50, penalty = 3, bc_type = 2;
   real volume_fraction = 0.5, filter_radius = 1.5, change_limit = 0.2;
   auto start = [&]() {
     opt.running = false;
