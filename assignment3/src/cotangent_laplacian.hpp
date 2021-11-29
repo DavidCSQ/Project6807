@@ -69,9 +69,9 @@ void cotangent_laplacian(
         }
         IJV.push_back(Eigen::Triplet<double>(i,i,value));
     }
-    for(int i = 0;i<IJV.size();i++){
-        std::cout<<IJV[i].row()<<" "<<IJV[i].col()<<" "<<IJV[i].value()<<"\n";
-    }
+    // for(int i = 0;i<IJV.size();i++){
+    //     std::cout<<IJV[i].row()<<" "<<IJV[i].col()<<" "<<IJV[i].value()<<"\n";
+    // }
 	// Set From Triplets Sums all Triplets with the same indices
 	L.setFromTriplets(IJV.begin(), IJV.end());
 }

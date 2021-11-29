@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
 		run_all();
 	} else {
 		igl::opengl::glfw::Viewer viewer;
-		LinearBlendSkinningUI ui;
+		MakeItStandBasicUI ui;
 		viewer.plugins.push_back(&ui);
 		viewer.launch();
 	}
