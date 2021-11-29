@@ -531,7 +531,6 @@ public:
 			ImGui::NewLine();
 
 			if (ImGui::Button("Compute Center Of Gravity")) {
-				std::cout << "Bahoomda Aneta" << std::endl;
 				compute_cog();
 			}
 
@@ -619,24 +618,30 @@ public:
 		std::cout << F.rows() << " " << F.cols() << std::endl;
 		std::cout << V.rows() << " " << V.cols() << std::endl;
 
+		Eigen::MatrixXd N;
 
 		cog = { 0.f,0.f,0.f };
 		double m = 0.f;
-		auto vs = V;
-		if (handles.positions().rows() > 0) {
-			vs = lbs_mat * handles.transform();
-		}
+		deformed_V = V;
+		// if (handles.positions().rows() > 0) {
+		// 	vs = lbs_mat * handles.transform();
+		// }
+
+		// Compute per face normals
+		igl::per_face_normals(deformed_V, F, N);
+		std::cout << "Rows " << N.rows() << " Cols " << N.cols() << std::endl;
+
 		// Iterate over faces to calculate mass and center of gravity using divergence theorem
 		for (int f = 0; f < F.rows(); f++) {
 			// Get three vertices of face
 			auto vinds = F.row(f);
-			Eigen::Vector3d vi = vs.row(vinds[0]);
-			Eigen::Vector3d vj = vs.row(vinds[1]);
-			Eigen::Vector3d vk = vs.row(vinds[2]);
+			auto normal = N.row(f).transpose();
+
+			Eigen::Vector3d vi = deformed_V.row(vinds[0]);
+			Eigen::Vector3d vj = deformed_V.row(vinds[1]);
+			Eigen::Vector3d vk = deformed_V.row(vinds[2]);
 			
 			// We assume a density of 1 since it doesn't matter
-			//auto normal = (vj - vi).cross(vk - vi);
-			auto normal = (vk - vi).cross(vj - vi);
 			m = m + (normal.dot(vi + vj + vk) / 6.f);
 			auto g = vi.cwiseProduct(vi) + vi.cwiseProduct(vj) + vj.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vk) + vk.cwiseProduct(vi);
 			auto element = normal.cwiseProduct(g) / 24.f;
@@ -646,9 +651,14 @@ public:
 
 		cog_computed = true;
 		std::cout << "COG: " << cog << std::endl;
-		std::cout << "newvs dims: (" << vs.rows() << ", " << vs.cols() << ")\n";
+		std::cout << "newvs dims: (" << deformed_V.rows() << ", " << deformed_V.cols() << ")\n";
+		std::cout << "lbs_mat dims: (" << lbs_mat.rows() << ", " << lbs_mat.cols() << ")\n";
 		std::cout << "handle transform dims: (" << handles.transform().rows() << ", " << handles.transform().cols() << ")\n";
 		draw_handles();
+	}
+
+	void compute_dcog() {
+
 	}
 
 	bool mouse_down(int button, int modifier) {
@@ -694,7 +704,6 @@ public:
 				if (v >= 0) {
 					Eigen::Vector3d pos = viewer->data().V.row(v);
 					handles.add_point_handle(pos);
-					std::cout << "Handle added at: " << pos << std::endl;
 					draw_handles();
 					return true;
 				}
@@ -778,9 +787,12 @@ private:
 	igl::opengl::glfw::imgui::ImGuiMenu menu;
 
 	Eigen::MatrixXd V; // Vertex Positions
+	Eigen::MatrixXd deformed_V; // Theoretically this is the most up to date version of the vertices after a call to comput_cog
 	Eigen::MatrixXi T; // Tetrahedral Elements
 	Eigen::MatrixXi F; // Triangular Faces of exterior surface
 	Eigen::Vector3d cog; // Center of Gravity
+	Eigen::MatrixXd dm; // Derivative of mass with respect to vertices (3, n_vertices)
+	Eigen::MatrixXd dcog; // Derivative of cog with respect to vertices (9, n_vertices)
 	bool cog_computed = false;
 
 	int weight_type = 0; // Type of weights to compute
