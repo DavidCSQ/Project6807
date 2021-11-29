@@ -622,16 +622,21 @@ public:
 
 		cog = { 0.f,0.f,0.f };
 		double m = 0.f;
+		auto vs = V;
+		if (handles.positions().rows() > 0) {
+			vs = lbs_mat * handles.transform();
+		}
 		// Iterate over faces to calculate mass and center of gravity using divergence theorem
 		for (int f = 0; f < F.rows(); f++) {
 			// Get three vertices of face
 			auto vinds = F.row(f);
-			Eigen::Vector3d vi = V.row(vinds[0]);
-			Eigen::Vector3d vj = V.row(vinds[1]);
-			Eigen::Vector3d vk = V.row(vinds[2]);
+			Eigen::Vector3d vi = vs.row(vinds[0]);
+			Eigen::Vector3d vj = vs.row(vinds[1]);
+			Eigen::Vector3d vk = vs.row(vinds[2]);
 			
 			// We assume a density of 1 since it doesn't matter
-			auto normal = (vj - vi).cross(vk - vi);
+			//auto normal = (vj - vi).cross(vk - vi);
+			auto normal = (vk - vi).cross(vj - vi);
 			m = m + (normal.dot(vi + vj + vk) / 6.f);
 			auto g = vi.cwiseProduct(vi) + vi.cwiseProduct(vj) + vj.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vk) + vk.cwiseProduct(vi);
 			auto element = normal.cwiseProduct(g) / 24.f;
@@ -641,6 +646,9 @@ public:
 
 		cog_computed = true;
 		std::cout << "COG: " << cog << std::endl;
+		std::cout << "newvs dims: (" << vs.rows() << ", " << vs.cols() << ")\n";
+		std::cout << "handle transform dims: (" << handles.transform().rows() << ", " << handles.transform().cols() << ")\n";
+		draw_handles();
 	}
 
 	bool mouse_down(int button, int modifier) {
