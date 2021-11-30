@@ -680,6 +680,7 @@ public:
 			dm[3 * vinds[2] + 2] += (vsum[0] * e1[1]);
 
 			// derivative of center of mass contributions
+			// Vector 0 of this face
 			Eigen::Vector3d dt = {
 				normal[0] * (vsum[0] + vi[0]),
 				g[1] * e3[2],
@@ -698,6 +699,46 @@ public:
 				normal[2] * (vsum[2] + vi[2])
 			};
 			dc.col(3 * vinds[0] + 2) += dt;
+
+			// Vector 1 of this face
+			dt = {
+				normal[0] * (vsum[0] + vj[0]),
+				g[1] * e2[2],
+				-g[2] * e2[1]
+			};
+			dc.col(3 * vinds[1]) += dt;
+			dt = {
+				-g[0] * e2[2],
+				normal[1] * (vsum[1] + vj[1]),
+				g[2] * e2[0]
+			};
+			dc.col(3 * vinds[1] + 1) += dt;
+			dt = {
+				g[0] * e2[1],
+				-g[1] * e2[0],
+				normal[2] * (vsum[2] + vj[2])
+			};
+			dc.col(3 * vinds[1] + 2) += dt;
+
+			// Vector 2 of this face
+			dt = {
+				normal[0] * (vsum[0] + vk[0]),
+				g[1] * e1[2],
+				-g[2] * e1[1]
+			};
+			dc.col(3 * vinds[2]) += dt;
+			dt = {
+				-g[0] * e1[2],
+				normal[1] * (vsum[1] + vk[1]),
+				g[2] * e1[0]
+			};
+			dc.col(3 * vinds[2] + 1) += dt;
+			dt = {
+				g[0] * e1[1],
+				-g[1] * e1[0],
+				normal[2] * (vsum[2] + vk[2])
+			};
+			dc.col(3 * vinds[2] + 2) += dt;
 		}
 
 		m /= 6.0;
