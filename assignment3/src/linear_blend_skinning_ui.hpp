@@ -623,31 +623,54 @@ public:
 		cog = { 0.f,0.f,0.f };
 		double m = 0.f;
 		deformed_V = V;
+
+		// We will compute derivatives at the same time we do mass and cog
+		dm.setZero();
+		dcog.setZero();
+
+		// This needs to be fixed to account for changing vertex positions
 		// if (handles.positions().rows() > 0) {
-		// 	vs = lbs_mat * handles.transform();
+		// 	deformed_V = lbs_mat * handles.transform();
 		// }
 
 		// Compute per face normals
 		igl::per_face_normals(deformed_V, F, N);
 		std::cout << "Rows " << N.rows() << " Cols " << N.cols() << std::endl;
 
-		// Iterate over faces to calculate mass and center of gravity using divergence theorem
+		// Iterate over faces to calculate mass and center of gravity (and derivatives) using divergence theorem
 		for (int f = 0; f < F.rows(); f++) {
 			// Get three vertices of face
 			auto vinds = F.row(f);
-			auto normal = N.row(f).transpose();
+			// auto normal = N.row(f).transpose();
 
 			Eigen::Vector3d vi = deformed_V.row(vinds[0]);
 			Eigen::Vector3d vj = deformed_V.row(vinds[1]);
 			Eigen::Vector3d vk = deformed_V.row(vinds[2]);
 			
+			auto normal = ((vj - vi).cross(vk - vi));
+			// nmanual.normalize();
+			// assert((nmanual - normal).norm() < 0.001f);
+
+			// Define edges for derivative computation
+			Eigen::Vector3d e1 = vj - vi, e2 = vi - vk, e3 = vk - vj;
+
+			// These are just from following the formulas in the paper
+			Eigen::Vector3d vsum = vi + vj + vk;
+			Eigen::Vector3d g = vsum.cwiseProduct(vsum) - (
+				vi.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vi));
+			// auto g = vi.cwiseProduct(vi) + vi.cwiseProduct(vj) + vj.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vk) + vk.cwiseProduct(vi);
+
 			// We assume a density of 1 since it doesn't matter
-			m = m + (normal.dot(vi + vj + vk) / 6.f);
-			auto g = vi.cwiseProduct(vi) + vi.cwiseProduct(vj) + vj.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vk) + vk.cwiseProduct(vi);
+			m = m + (normal.dot(vsum) / 6.f); // The division by 6 shouldn't be super important since we mostly care about derivatives
 			auto element = normal.cwiseProduct(g) / 24.f;
 			cog = cog + element;
+
+			// Derivatives
+			// Mass Derivative
+			// Notice that this will be a sum over all faces that include vertex v for each vertex v
 		}
 		cog = cog / m;
+		// compute_dcog(N);
 
 		cog_computed = true;
 		std::cout << "COG: " << cog << std::endl;
@@ -657,8 +680,19 @@ public:
 		draw_handles();
 	}
 
-	void compute_dcog() {
+	void compute_dcog(Eigen::MatrixXd& N) {
+		// This should only be called from compute_cog although it might be ok to do it
+		// in certain other places
+		dm.conservativeResize(3, V.rows());
+		dcog.conservativeResize(9, V.rows());
 
+		dm.setZero();
+		dcog.setZero();
+
+		// Compute derivatives of mass first
+		for (int f = 0; f < F.rows(); f++) {
+
+		}
 	}
 
 	bool mouse_down(int button, int modifier) {
