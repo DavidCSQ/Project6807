@@ -638,6 +638,11 @@ public:
 		// if (handles.positions().rows() > 0) {
 		// 	deformed_V = lbs_mat * handles.transform();
 		// }
+		if (handles.positions().rows() > 0) {
+			deformed_V = viewer->data().V;
+		}
+
+		std::cout << "V sample: " << deformed_V.row(100) << std::endl;
 
 		// Compute per face normals
 		igl::per_face_normals(deformed_V, F, N);
@@ -646,22 +651,23 @@ public:
 		for (int f = 0; f < F.rows(); f++) {
 			// Get three vertices of face
 			auto vinds = F.row(f);
-			// auto normal = N.row(f).transpose();
+			auto normal = -N.row(f).transpose();
 
-			Eigen::Vector3d vi = deformed_V.row(vinds[0]);
-			Eigen::Vector3d vj = deformed_V.row(vinds[1]);
-			Eigen::Vector3d vk = deformed_V.row(vinds[2]);
+			const Eigen::Vector3d vi = deformed_V.row(vinds[0]);
+			const Eigen::Vector3d vj = deformed_V.row(vinds[1]);
+			const Eigen::Vector3d vk = deformed_V.row(vinds[2]);
 			
 			Eigen::Vector3d e1 = vj - vi, e2 = vi - vk, e3 = vk - vj;
-			auto normal = -e1.cross(e2); // This should technically be normalized, but the authors dont.
+			// auto normal = -e1.cross(e2); // This should technically be normalized, but the authors dont.
 
 			Eigen::Vector3d vsum = vi + vj + vk;
 			Eigen::Vector3d g = vsum.cwiseProduct(vsum) - (
 				vi.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vi));
 
+
 			// mass
-			// m += (vsum.dot(normal)); // This is the correct way according to divergence theorem
-			m += vsum[0] * normal[0]; // This is the incorrect way the authors do it
+			m += (vsum.dot(normal)); // This is the correct way according to divergence theorem
+			// m += (vsum[0] * normal[0]); // This is the incorrect way the authors do it
 
 			// center of mass
 			c += g.cwiseProduct(normal);
@@ -741,13 +747,15 @@ public:
 			dc.col(3 * vinds[2] + 2) += dt;
 		}
 
+		std::cout << "mass: " << m << std::endl;
 		m /= 6.0;
-		c /= 24.0;
+		c /= (24.0 * m);
 		cog_computed = true;
 		std::cout << "COG: " << c << std::endl;
 		std::cout << "newvs dims: (" << deformed_V.rows() << ", " << deformed_V.cols() << ")\n";
 		std::cout << "lbs_mat dims: (" << lbs_mat.rows() << ", " << lbs_mat.cols() << ")\n";
 		std::cout << "handle transform dims: (" << handles.transform().rows() << ", " << handles.transform().cols() << ")\n";
+		std::cout << "Derivative of com sample: " << dc.col(0) << std::endl;
 		draw_handles();
 	}
 
