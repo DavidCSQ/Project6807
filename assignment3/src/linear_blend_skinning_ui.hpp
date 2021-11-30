@@ -580,7 +580,7 @@ public:
 			int oldrows = points.rows();
 			int oldcols = points.cols();
 			points.conservativeResize(oldrows+1, oldcols);
-			points.row(oldrows) = cog;
+			points.row(oldrows) = c;
 			point_colors.conservativeResize(oldrows + 1, oldcols);
 			point_colors.row(oldrows) = Eigen::Vector3d({ 0.0, 0.5, 0.5 });
 		}
@@ -615,19 +615,25 @@ public:
 	}
 
 	void compute_cog() {
-		std::cout << F.rows() << " " << F.cols() << std::endl;
-		std::cout << V.rows() << " " << V.cols() << std::endl;
-
+		// The authors made a lot of mistakes in their code, but I am sticking to their approach for now
+		// Eigen::Matrix<double, 1, Eigen::Dynamic> mList;
+		// Eigen::Matrix<double, 3, Eigen::Dynamic> cList;
+		Eigen::Matrix<double, 3, Eigen::Dynamic> dmList;
+		Eigen::Matrix<double, 9, Eigen::Dynamic> dcList;
 		Eigen::MatrixXd N;
 
-		cog = { 0.f,0.f,0.f };
 		double m = 0.f;
-		deformed_V = V;
+		c.setZero();
+
+		dmList.resize(3, 3 * F.rows());
 
 		// We will compute derivatives at the same time we do mass and cog
+		dm.resize(1, 3 * V.rows());
+		dc.resize(3, 3 * V.rows());
 		dm.setZero();
-		dcog.setZero();
+		dc.setZero();
 
+		deformed_V = V;
 		// This needs to be fixed to account for changing vertex positions
 		// if (handles.positions().rows() > 0) {
 		// 	deformed_V = lbs_mat * handles.transform();
@@ -635,9 +641,8 @@ public:
 
 		// Compute per face normals
 		igl::per_face_normals(deformed_V, F, N);
-		std::cout << "Rows " << N.rows() << " Cols " << N.cols() << std::endl;
 
-		// Iterate over faces to calculate mass and center of gravity (and derivatives) using divergence theorem
+		// Iterate over faces to calculate contributions to mass and center of gravity (and derivatives) using divergence theorem
 		for (int f = 0; f < F.rows(); f++) {
 			// Get three vertices of face
 			auto vinds = F.row(f);
@@ -647,52 +652,62 @@ public:
 			Eigen::Vector3d vj = deformed_V.row(vinds[1]);
 			Eigen::Vector3d vk = deformed_V.row(vinds[2]);
 			
-			auto normal = ((vj - vi).cross(vk - vi));
-			// nmanual.normalize();
-			// assert((nmanual - normal).norm() < 0.001f);
-
-			// Define edges for derivative computation
 			Eigen::Vector3d e1 = vj - vi, e2 = vi - vk, e3 = vk - vj;
+			auto normal = -e1.cross(e2); // This should technically be normalized, but the authors dont.
 
-			// These are just from following the formulas in the paper
 			Eigen::Vector3d vsum = vi + vj + vk;
 			Eigen::Vector3d g = vsum.cwiseProduct(vsum) - (
 				vi.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vi));
-			// auto g = vi.cwiseProduct(vi) + vi.cwiseProduct(vj) + vj.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vk) + vk.cwiseProduct(vi);
 
-			// We assume a density of 1 since it doesn't matter
-			m = m + (normal.dot(vsum) / 6.f); // The division by 6 shouldn't be super important since we mostly care about derivatives
-			auto element = normal.cwiseProduct(g) / 24.f;
-			cog = cog + element;
+			// mass
+			// m += (vsum.dot(normal)); // This is the correct way according to divergence theorem
+			m += vsum[0] * normal[0]; // This is the incorrect way the authors do it
 
-			// Derivatives
-			// Mass Derivative
-			// Notice that this will be a sum over all faces that include vertex v for each vertex v
+			// center of mass
+			c += g.cwiseProduct(normal);
+
+			// derivative of mass contributions
+			dm[3 * vinds[0]] += normal[0];
+			dm[3 * vinds[0] + 1] += (-vsum[0] * e3[2]);
+			dm[3 * vinds[0] + 2] += (vsum[0] * e3[1]);
+
+			dm[3 * vinds[1]] += normal[0];
+			dm[3 * vinds[1] + 1] += (-vsum[0] * e2[2]);
+			dm[3 * vinds[1] + 2] += (vsum[0] * e2[1]);
+
+			dm[3 * vinds[2]] += normal[0];
+			dm[3 * vinds[2] + 1] += (-vsum[0] * e1[2]);
+			dm[3 * vinds[2] + 2] += (vsum[0] * e1[1]);
+
+			// derivative of center of mass contributions
+			Eigen::Vector3d dt = {
+				normal[0] * (vsum[0] + vi[0]),
+				g[1] * e3[2],
+				-g[2] * e3[1]
+			};
+			dc.col(3 * vinds[0]) += dt;
+			dt = {
+				-g[0] * e3[2],
+				normal[1] * (vsum[1] + vi[1]),
+				g[2] * e3[0]
+			};
+			dc.col(3 * vinds[0] + 1) += dt;
+			dt = {
+				g[0] * e3[1],
+				-g[1] * e3[0],
+				normal[2] * (vsum[2] + vi[2])
+			};
+			dc.col(3 * vinds[0] + 2) += dt;
 		}
-		cog = cog / m;
-		// compute_dcog(N);
 
+		m /= 6.0;
+		c /= 24.0;
 		cog_computed = true;
-		std::cout << "COG: " << cog << std::endl;
+		std::cout << "COG: " << c << std::endl;
 		std::cout << "newvs dims: (" << deformed_V.rows() << ", " << deformed_V.cols() << ")\n";
 		std::cout << "lbs_mat dims: (" << lbs_mat.rows() << ", " << lbs_mat.cols() << ")\n";
 		std::cout << "handle transform dims: (" << handles.transform().rows() << ", " << handles.transform().cols() << ")\n";
 		draw_handles();
-	}
-
-	void compute_dcog(Eigen::MatrixXd& N) {
-		// This should only be called from compute_cog although it might be ok to do it
-		// in certain other places
-		dm.conservativeResize(3, V.rows());
-		dcog.conservativeResize(9, V.rows());
-
-		dm.setZero();
-		dcog.setZero();
-
-		// Compute derivatives of mass first
-		for (int f = 0; f < F.rows(); f++) {
-
-		}
 	}
 
 	bool mouse_down(int button, int modifier) {
@@ -824,9 +839,10 @@ private:
 	Eigen::MatrixXd deformed_V; // Theoretically this is the most up to date version of the vertices after a call to comput_cog
 	Eigen::MatrixXi T; // Tetrahedral Elements
 	Eigen::MatrixXi F; // Triangular Faces of exterior surface
-	Eigen::Vector3d cog; // Center of Gravity
-	Eigen::MatrixXd dm; // Derivative of mass with respect to vertices (3, n_vertices)
-	Eigen::MatrixXd dcog; // Derivative of cog with respect to vertices (9, n_vertices)
+	double m;
+	Eigen::Vector3d c;
+	Eigen::Matrix<double, 1, Eigen::Dynamic> dm; // (1, 3 * n_vertices) vertex v dm[3*v], dm[3*v + 1], dm[3*v + 2]
+	Eigen::Matrix<double, 3, Eigen::Dynamic> dc; // (3, 3 * n_vertices)	
 	bool cog_computed = false;
 
 	int weight_type = 0; // Type of weights to compute
