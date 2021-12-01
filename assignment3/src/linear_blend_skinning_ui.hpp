@@ -441,6 +441,7 @@ public:
 				igl::remove_duplicate_vertices(V_temp, 0, V_temp_unique, SVI, SVJ);
 				std::for_each(F_temp.data(), F_temp.data() + F_temp.size(), [&SVJ](int& f) {f = SVJ(f); });
 				V_temp = V_temp_unique;
+				std::cout << "Triangle Mesh has faces: " << F_temp.rows() << std::endl;
 
 				if (F_temp.rows() > MAX_FACES) {
 					std::cout << "Mesh too large, decimating." << std::endl;
@@ -460,6 +461,7 @@ public:
 					}
 				}
 
+				std::cout << "Normal vertices: " << V_temp.rows() << std::endl;
 				if (igl::copyleft::tetgen::tetrahedralize(V_temp, F_temp, "pq1.414", V, T, F) == 0) {
 					F.col(0).swap(F.col(2));
 
@@ -624,6 +626,7 @@ public:
 
 		double m = 0.f;
 		c.setZero();
+		std::cout << "Outward faces: " << F.rows() << std::endl;
 
 		dmList.resize(3, 3 * F.rows());
 
