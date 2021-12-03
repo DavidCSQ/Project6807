@@ -17,7 +17,7 @@ void test(std::string testcase) {
 	std::for_each(F_temp.data(), F_temp.data() + F_temp.size(), [&SVJ](int& f) {f = SVJ(f); });
 	V_temp = V_temp_unique;
 
-	if (F_temp.rows() > LinearBlendSkinningUI::MAX_FACES) {
+	if (F_temp.rows() > MakeItStandBasicUI::MAX_FACES) {
 		std::cout << "Mesh too large, decimating." << std::endl;
 		Eigen::MatrixXd V_dec_temp;
 		Eigen::MatrixXi F_dec_temp;
@@ -25,7 +25,7 @@ void test(std::string testcase) {
 
 		std::cout << "Size before = " << V_temp.rows() << " x " << V_temp.cols() << std::endl;
 
-		if (igl::decimate(V_temp, F_temp, LinearBlendSkinningUI::MAX_FACES, V_dec_temp, F_dec_temp, J, I)) {
+		if (igl::decimate(V_temp, F_temp, MakeItStandBasicUI::MAX_FACES, V_dec_temp, F_dec_temp, J, I)) {
 			std::cout << "Size after = " << V_dec_temp.rows() << " x " << V_dec_temp.cols() << std::endl;
 			V_temp = V_dec_temp;
 			F_temp = F_dec_temp;
