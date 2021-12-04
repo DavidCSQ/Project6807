@@ -235,12 +235,9 @@ public:
 		// Eigen::Matrix<double, 3, Eigen::Dynamic> cList;
 		Eigen::Matrix<double, 3, Eigen::Dynamic> dmList;
 		Eigen::Matrix<double, 9, Eigen::Dynamic> dcList;
-		Eigen::MatrixXd N;
-		assert(F.rows() == viewer->data().F.rows());
 
 		double m = 0.f;
 		c.setZero();
-		std::cout << "Outward faces: " << F.rows() << std::endl;
 
 		dmList.resize(3, 3 * F.rows());
 
@@ -251,25 +248,16 @@ public:
 		dc.setZero();
 
 		deformed_V = V;
-		// This needs to be fixed to account for changing vertex positions
-		// if (handles.positions().rows() > 0) {
-		// 	deformed_V = lbs_mat * handles.transform();
-		// }
 		if (handles.positions().rows() > 0) {
 			deformed_V = viewer->data().V;
 		}
 
 		std::cout << "V sample: " << deformed_V.row(100) << std::endl;
 
-		// Compute per face normals
-		igl::per_face_normals(deformed_V, F, N);
-
 		// Iterate over faces to calculate contributions to mass and center of gravity (and derivatives) using divergence theorem
 		for (int f = 0; f < viewer->data().F.rows(); f++) {
 			// Get three vertices of face
 			auto vinds = viewer->data().F.row(f);
-			// auto normal = N.row(f).transpose();
-			// auto normal = viewer->data().F_normals.row(f).transpose();
 
 			const Eigen::Vector3d vi = viewer->data().V.row(vinds[0]);
 			const Eigen::Vector3d vj = viewer->data().V.row(vinds[1]);
@@ -277,120 +265,109 @@ public:
 
 			
 			Eigen::Vector3d e1 = vj - vi, e2 = vi - vk, e3 = vk - vj;
-			// auto normal = -e1.cross(e2);
+			// auto normal = -e1.cross(e2); This is broken
 			auto normal = cross_prod(-e1, e2);
 
-			std::cout << "Face " << f << std::endl;
-			std::cout << "Vertex 0: " << std::endl << vi << std::endl;
-			std::cout << "Vertex 1: " << std::endl << vj << std::endl;
-			std::cout << "Vertex 2: " << std::endl << vk << std::endl;
-			std::cout << "Normal: " << std::endl << normal << std::endl;
-			// std::cout << "Normal (manual): " << std::endl << normalc << std::endl;
+			// std::cout << "Face " << f << std::endl;
+			// std::cout << "Vertex 0: " << std::endl << vi << std::endl;
+			// std::cout << "Vertex 1: " << std::endl << vj << std::endl;
+			// std::cout << "Vertex 2: " << std::endl << vk << std::endl;
+			// std::cout << "Normal: " << std::endl << normal << std::endl;
 
 			Eigen::Vector3d vsum = vi + vj + vk;
 			Eigen::Vector3d g = vsum.cwiseProduct(vsum) - (
 				vi.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vi));
 			// Eigen::Vector3d g = vi.cwiseProduct(vi) + vi.cwiseProduct(vj) + 
 			// 	vj.cwiseProduct(vj) + vj.cwiseProduct(vk) + vk.cwiseProduct(vk) + vk.cwiseProduct(vi);
-			std::cout << "e1 " << std::endl << e1 << std::endl;
-			std::cout << "e2 " << std::endl << e2 << std::endl;
-
-
-
 
 			// mass
 			m += (vsum.dot(normal)); // This is the correct way according to divergence theorem
-			std::cout << "Mass for Face " << f << " is " << vsum.dot(normal) << std::endl;
-			std::cout << "Vsum " << std::endl << vsum << std::endl;
-			std::cout << "Normal " << std::endl << normal << std::endl;
 			// m += (vsum[0] * normal[0]); // This is the incorrect way the authors do it
 
 			// center of mass
 			c += g.cwiseProduct(normal);
 
-			// // derivative of mass contributions
-			// dm[3 * vinds[0]] += normal[0];
-			// dm[3 * vinds[0] + 1] += (-vsum[0] * e3[2]);
-			// dm[3 * vinds[0] + 2] += (vsum[0] * e3[1]);
+			// derivative of mass contributions
+			dm[3 * vinds[0]] += normal[0];
+			dm[3 * vinds[0] + 1] += (-vsum[0] * e3[2]);
+			dm[3 * vinds[0] + 2] += (vsum[0] * e3[1]);
 
-			// dm[3 * vinds[1]] += normal[0];
-			// dm[3 * vinds[1] + 1] += (-vsum[0] * e2[2]);
-			// dm[3 * vinds[1] + 2] += (vsum[0] * e2[1]);
+			dm[3 * vinds[1]] += normal[0];
+			dm[3 * vinds[1] + 1] += (-vsum[0] * e2[2]);
+			dm[3 * vinds[1] + 2] += (vsum[0] * e2[1]);
 
-			// dm[3 * vinds[2]] += normal[0];
-			// dm[3 * vinds[2] + 1] += (-vsum[0] * e1[2]);
-			// dm[3 * vinds[2] + 2] += (vsum[0] * e1[1]);
+			dm[3 * vinds[2]] += normal[0];
+			dm[3 * vinds[2] + 1] += (-vsum[0] * e1[2]);
+			dm[3 * vinds[2] + 2] += (vsum[0] * e1[1]);
 
-			// // derivative of center of mass contributions
-			// // Vector 0 of this face
-			// Eigen::Vector3d dt = {
-			// 	normal[0] * (vsum[0] + vi[0]),
-			// 	g[1] * e3[2],
-			// 	-g[2] * e3[1]
-			// };
-			// dc.col(3 * vinds[0]) += dt;
-			// dt = {
-			// 	-g[0] * e3[2],
-			// 	normal[1] * (vsum[1] + vi[1]),
-			// 	g[2] * e3[0]
-			// };
-			// dc.col(3 * vinds[0] + 1) += dt;
-			// dt = {
-			// 	g[0] * e3[1],
-			// 	-g[1] * e3[0],
-			// 	normal[2] * (vsum[2] + vi[2])
-			// };
-			// dc.col(3 * vinds[0] + 2) += dt;
+			// derivative of center of mass contributions
+			// Vector 0 of this face
+			Eigen::Vector3d dt = {
+				normal[0] * (vsum[0] + vi[0]),
+				g[1] * e3[2],
+				-g[2] * e3[1]
+			};
+			dc.col(3 * vinds[0]) += dt;
+			dt = {
+				-g[0] * e3[2],
+				normal[1] * (vsum[1] + vi[1]),
+				g[2] * e3[0]
+			};
+			dc.col(3 * vinds[0] + 1) += dt;
+			dt = {
+				g[0] * e3[1],
+				-g[1] * e3[0],
+				normal[2] * (vsum[2] + vi[2])
+			};
+			dc.col(3 * vinds[0] + 2) += dt;
 
-			// // Vector 1 of this face
-			// dt = {
-			// 	normal[0] * (vsum[0] + vj[0]),
-			// 	g[1] * e2[2],
-			// 	-g[2] * e2[1]
-			// };
-			// dc.col(3 * vinds[1]) += dt;
-			// dt = {
-			// 	-g[0] * e2[2],
-			// 	normal[1] * (vsum[1] + vj[1]),
-			// 	g[2] * e2[0]
-			// };
-			// dc.col(3 * vinds[1] + 1) += dt;
-			// dt = {
-			// 	g[0] * e2[1],
-			// 	-g[1] * e2[0],
-			// 	normal[2] * (vsum[2] + vj[2])
-			// };
-			// dc.col(3 * vinds[1] + 2) += dt;
+			// Vector 1 of this face
+			dt = {
+				normal[0] * (vsum[0] + vj[0]),
+				g[1] * e2[2],
+				-g[2] * e2[1]
+			};
+			dc.col(3 * vinds[1]) += dt;
+			dt = {
+				-g[0] * e2[2],
+				normal[1] * (vsum[1] + vj[1]),
+				g[2] * e2[0]
+			};
+			dc.col(3 * vinds[1] + 1) += dt;
+			dt = {
+				g[0] * e2[1],
+				-g[1] * e2[0],
+				normal[2] * (vsum[2] + vj[2])
+			};
+			dc.col(3 * vinds[1] + 2) += dt;
 
-			// // Vector 2 of this face
-			// dt = {
-			// 	normal[0] * (vsum[0] + vk[0]),
-			// 	g[1] * e1[2],
-			// 	-g[2] * e1[1]
-			// };
-			// dc.col(3 * vinds[2]) += dt;
-			// dt = {
-			// 	-g[0] * e1[2],
-			// 	normal[1] * (vsum[1] + vk[1]),
-			// 	g[2] * e1[0]
-			// };
-			// dc.col(3 * vinds[2] + 1) += dt;
-			// dt = {
-			// 	g[0] * e1[1],
-			// 	-g[1] * e1[0],
-			// 	normal[2] * (vsum[2] + vk[2])
-			// };
-			// dc.col(3 * vinds[2] + 2) += dt;
+			// Vector 2 of this face
+			dt = {
+				normal[0] * (vsum[0] + vk[0]),
+				g[1] * e1[2],
+				-g[2] * e1[1]
+			};
+			dc.col(3 * vinds[2]) += dt;
+			dt = {
+				-g[0] * e1[2],
+				normal[1] * (vsum[1] + vk[1]),
+				g[2] * e1[0]
+			};
+			dc.col(3 * vinds[2] + 1) += dt;
+			dt = {
+				g[0] * e1[1],
+				-g[1] * e1[0],
+				normal[2] * (vsum[2] + vk[2])
+			};
+			dc.col(3 * vinds[2] + 2) += dt;
 		}
 
-		m /= 6.0;
+		m /= 18.0; // Authors divide by 6 which is wrong
 		c /= (24.0 * m);
 		cog_computed = true;
+
 		std::cout << "mass: " << m << std::endl;
 		std::cout << "COG: " << c << std::endl;
-		std::cout << "newvs dims: (" << deformed_V.rows() << ", " << deformed_V.cols() << ")\n";
-		std::cout << "lbs_mat dims: (" << lbs_mat.rows() << ", " << lbs_mat.cols() << ")\n";
-		std::cout << "handle transform dims: (" << handles.transform().rows() << ", " << handles.transform().cols() << ")\n";
 		std::cout << "Derivative of com sample: " << dc.col(0) << std::endl;
 		draw_handles();
 	}
