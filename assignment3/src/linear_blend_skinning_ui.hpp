@@ -135,19 +135,6 @@ public:
 			}
 
 			ImGui::NewLine();
-			ImGui::Text("Weight Type");
-			int last_weight_type = weight_type;
-			ImGui::RadioButton("Nearest Neighbor", &weight_type, 0);
-			ImGui::RadioButton("Linear", &weight_type, 1);
-			ImGui::RadioButton("Bounded Biharmonic", &weight_type, 2);
-			if (last_weight_type != weight_type && create_handle_mode == 1) {
-				compute_weights();
-				if (handles.positions().rows() > 0) {
-					viewer->data().set_vertices(lbs_mat * handles.transform());
-				}
-			}
-
-			ImGui::NewLine();
 
 			if (ImGui::Button("Compute Center Of Gravity")) {
 				compute_cog();
@@ -199,27 +186,13 @@ public:
 
 	void compute_weights() {
 		// Only compute weights if there are weights to compute!
-		if (handles.positions().rows() > 0) {
-			Eigen::MatrixXd W;
-			switch (weight_type) {
-			case 0: // Nearest Neighbor
-				ComputeNearestNeighborWeights(V, handles.positions(), W);
-				igl::normalize_row_sums(W, W);
-				break;
-			case 1: // Linear
-				ComputeLinearSkinningWeights(V, handles.positions(), W);
-				igl::normalize_row_sums(W, W);
-				break;
-			case 2: // Bounded Biharmonic Weights
-				Eigen::VectorXi b;
-				Eigen::MatrixXd bc;
-				handles.boundary_conditions(V, T, b, bc);
-				bounded_biharmonic_weights(V, T, b, bc, W);
-				break;
-			}
+		Eigen::MatrixXd W;
+		Eigen::VectorXi b;
+		Eigen::MatrixXd bc;
+		handles.boundary_conditions(V, T, b, bc);
+		bounded_biharmonic_weights(V, T, b, bc, W);
 
-			igl::lbs_matrix(V, W, lbs_mat);
-		}
+		igl::lbs_matrix(V, W, lbs_mat);
 	}
 
 	Eigen::Vector3d cross_prod(Eigen::Vector3d a, Eigen::Vector3d b) {
@@ -501,8 +474,6 @@ private:
 	Eigen::MatrixXd deformed_V; // Theoretically this is the most up to date version of the vertices after a call to comput_cog
 	Eigen::MatrixXi T; // Tetrahedral Elements
 	Eigen::MatrixXi F; // Triangular Faces of exterior surface
-	Eigen::MatrixXd V_trimesh; // Vertices of original triangle mesh
-	Eigen::MatrixXd F_trimesh; // Vertices of original triangle mesh
 	double m;
 	Eigen::Vector3d c;
 	Eigen::Matrix<double, 1, Eigen::Dynamic> dm; // (1, 3 * n_vertices) vertex v dm[3*v], dm[3*v + 1], dm[3*v + 2]
