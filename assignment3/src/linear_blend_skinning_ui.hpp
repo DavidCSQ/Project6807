@@ -398,6 +398,8 @@ public:
 
 	bool mouse_move(int mouse_x, int mouse_y) {
 		if (create_handle_mode == 1 && moving_handle_id >= 0) {
+			// CoG no longer valid so clear it out
+			cog_computed = false;
 
 			float x = viewer->current_mouse_x;
 			float y = viewer->core().viewport(3) - viewer->current_mouse_y;
