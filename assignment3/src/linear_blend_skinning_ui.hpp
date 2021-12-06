@@ -93,6 +93,8 @@ public:
 				}
 				std::cerr << "number of vertices = " << V.rows() << std::endl;
 				std::cerr << "number of faces = " << T.rows() << std::endl;
+
+				set_support_vertices();
 			}
 		}
 
@@ -127,6 +129,7 @@ public:
 			if (handles.positions().rows() > 0) {
 				ImGui::SameLine();
 				if (ImGui::RadioButton("Manipulate", &create_handle_mode, 1)) {
+					started_mesh_manipulation = true;
 					if (create_handle_mode == 1) {
 						std::cout << "Recomputing Weights - UI may hang during this." << std::endl;
 						compute_weights();
@@ -135,13 +138,23 @@ public:
 			}
 
 			ImGui::NewLine();
+			
+			if (!started_mesh_manipulation) {
+				ImGui::Text("Support Point Threshold:");
+				ImGui::DragFloat("Threshold", &support_threshold, 1., .1, 10.);
+				if (ImGui::Button("Recompute Support")) {
+					set_support_vertices();
+					draw_support_polygon();
+				}
+
+				ImGui::NewLine();
+			}
 
 			if (ImGui::Button("Compute Center Of Gravity")) {
 				compute_cog();
 			}
 
 			ImGui::NewLine();
-
 			if (ImGui::CollapsingHeader("Viewer Options")) {
 				make_checkbox("Wireframe", viewer->data().show_lines);
 				make_checkbox("Fill", viewer->data().show_faces);
@@ -162,26 +175,6 @@ public:
 			
 			// We assume the user chose the support polygon to be the base plane of the mesh
 		}
-	}
-
-	void draw_handles() {
-		Eigen::MatrixXd points, point_colors, line_colors;
-		Eigen::MatrixXi lines;
-		handles.visualize_handles(points, point_colors, lines, line_colors, create_handle_mode == 1);
-		if (moving_handle_id >= 0) {
-			point_colors.row(moving_handle_id) = Eigen::Vector3d(1.0, 0.7, 0.2);
-		}
-		if (cog_computed) {
-			int oldrows = points.rows();
-			int oldcols = points.cols();
-			points.conservativeResize(oldrows+1, oldcols);
-			points.row(oldrows) = c;
-			point_colors.conservativeResize(oldrows + 1, oldcols);
-			point_colors.row(oldrows) = Eigen::Vector3d({ 0.0, 0.5, 0.5 });
-		}
-		viewer->data().clear_labels();
-		viewer->data().set_points(points, point_colors);
-		viewer->data().set_edges(points, lines, line_colors);
 	}
 
 	void compute_weights() {
@@ -362,6 +355,7 @@ public:
 				moving_handle_id = best;
 				sel_pos = H.row(best);
 				draw_handles();
+				draw_support_polygon();
 				return true;
 			}
 		}
@@ -372,6 +366,7 @@ public:
 	{
 		moving_handle_id = -1;
 		draw_handles();
+		if (support_convex_hull.size() > 2) draw_support_polygon();
 		// Check to see if click or rotation
 		double dx = viewer->current_mouse_x - viewer->down_mouse_x;
 		double dy = viewer->current_mouse_y - viewer->down_mouse_y;
@@ -389,6 +384,7 @@ public:
 					Eigen::Vector3d pos = viewer->data().V.row(v);
 					handles.add_point_handle(pos);
 					draw_handles();
+					if (support_convex_hull.size() > 2) draw_support_polygon();
 					return true;
 				}
 			}
@@ -465,6 +461,129 @@ public:
 		}
 		return index;
 	}
+	
+	void set_support_vertices() {
+		double minheight = std::numeric_limits<double>::max();
+		for (int i = 0; i < V.rows(); i++) {
+			if (V.row(i)[2] < minheight) minheight = V.row(i)[2];
+		}
+		min_vertex_height = minheight;
+		
+		// Include thrheshold just in case we have other vertices super close to base plane
+		double threshold = support_threshold;
+		support_vertices.clear();
+		for (int i = 0; i < V.rows(); i++) {
+			if (V.row(i)[2] < minheight + threshold) support_vertices.push_back(i);
+		}
+
+		// Sort this list first by x then y for convex hull calculation
+		auto sort_key = [&](int a, int b) {
+			if (V.row(a)[0] < V.row(b)[0]) return true;
+			if (V.row(a)[0] == V.row(b)[0]) return V.row(a)[1] < V.row(b)[1];
+			return false;
+		};
+		std::sort(support_vertices.begin(), support_vertices.end(), sort_key);
+
+		// std::cout << "Support Vertices: \n";
+		// for (auto i : support_vertices) {
+		// 	std::cout << V.row(i) << std::endl;
+		// }
+
+		compute_support_convex_hull();
+	}
+	
+	// Determine if points a, b, and c make a counter clockwise turn
+	bool ccw(int a, int b, int c) {
+		auto pa = V.row(a);
+		auto pb = V.row(b);
+		auto pc = V.row(c);
+		
+		auto temp = (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pc[0] - pa[0]) * (pb[1] - pa[1]);
+		return temp > 0;
+	}
+
+	void draw_handles() {
+		Eigen::MatrixXd points, point_colors, line_colors;
+		Eigen::MatrixXi lines;
+		handles.visualize_handles(points, point_colors, lines, line_colors, create_handle_mode == 1);
+		if (moving_handle_id >= 0) {
+			point_colors.row(moving_handle_id) = Eigen::Vector3d(1.0, 0.7, 0.2);
+		}
+		// Draw center of gravity
+		if (cog_computed) {
+			int oldrows = points.rows();
+			int oldcols = points.cols();
+			points.conservativeResize(oldrows+1, oldcols);
+			points.row(oldrows) = c;
+			point_colors.conservativeResize(oldrows + 1, oldcols);
+			point_colors.row(oldrows) = Eigen::Vector3d({ 0.0, 0.5, 0.5 });
+		}
+
+		viewer->data().clear_labels();
+		viewer->data().set_points(points, point_colors);
+		viewer->data().set_edges(points, lines, line_colors);
+}
+
+	void draw_support_polygon() {
+		Eigen::MatrixXd P, P1, P2;
+		P.resize(support_convex_hull.size(), 3);
+		P1.resize(support_convex_hull.size(), 3);
+		P2.resize(support_convex_hull.size(), 3);
+
+		P.row(0) = V.row(support_convex_hull[0]);
+		P1.row(0) = V.row(support_convex_hull[0]);
+
+		for (int i = 1; i < support_convex_hull.size(); i++) {
+			P.row(i) = V.row(support_convex_hull[i]);
+			P1.row(i) = V.row(support_convex_hull[i]);
+			P2.row(i - 1) = V.row(support_convex_hull[i]);
+			std::string label = std::to_string(V.row(support_convex_hull[i])[1]);
+			viewer->data().add_label(V.row(support_convex_hull[i]), label);
+		}
+
+		P2.row(support_convex_hull.size() - 1) = P1.row(0);
+
+		// for (int i = 1; i < support_convex_hull.size(); i++) {
+		// 	P.row(i)[2] = min_vertex_height;
+		// 	P1.row(i)[2] = min_vertex_height;
+		// 	P2.row(i)[2] = min_vertex_height;
+		// }
+
+		viewer->data().add_points(P, Eigen::RowVector3d(0., 1., 0.));
+		viewer->data().add_edges(P1, P2, Eigen::RowVector3d(0., 1., 0.));
+	}
+
+	void compute_support_convex_hull() {
+		// Andrew's monotone chain convex hull algorithm
+		assert(support_vertices.size() > 2); // Necessary for a legitimate support polygon to exist
+
+		std::vector<int> U, L; // indices of vertices in upper and lower hull
+
+		// Lower hull first
+		for (int i = 0; i < support_vertices.size(); i++) {
+			while (L.size() > 2 &&
+				!ccw(*(L.end() - 2), L.back(), i)) {
+				L.pop_back();
+			}
+			L.push_back(i);
+		}
+
+		// Upper hull
+		for (int i = support_vertices.size() - 1; i >= 0; i--) {
+			while (U.size() > 2 &&
+				!ccw(*(U.end() - 2), U.back(), i)) {
+				U.pop_back();
+			}
+			U.push_back(i);
+		}
+
+		// Delete repeats
+		U.pop_back(); L.pop_back();
+
+		support_convex_hull.clear();
+		support_convex_hull = std::vector<int>(L.begin(), L.end());
+		support_convex_hull.insert(support_convex_hull.end(), U.begin(), U.end());
+	}
 
 	static const int MAX_FACES = 10000;
 
@@ -473,14 +592,19 @@ private:
 	igl::opengl::glfw::imgui::ImGuiMenu menu;
 
 	Eigen::MatrixXd V; // Vertex Positions
-	Eigen::MatrixXd deformed_V; // Theoretically this is the most up to date version of the vertices after a call to comput_cog
+	Eigen::MatrixXd deformed_V; // Theoretically this is the most up to date version of the vertices after a call to compute_cog
 	Eigen::MatrixXi T; // Tetrahedral Elements
 	Eigen::MatrixXi F; // Triangular Faces of exterior surface
+	float support_threshold = 0.5; // Determine what amount of bottom points are considered support points
+	double min_vertex_height;
+	std::vector<int> support_vertices; // Indices into V for vertices that will define a support plane
+	std::vector<int> support_convex_hull; // Convex hull that represents support polygon
 	double m;
 	Eigen::Vector3d c;
 	Eigen::Matrix<double, 1, Eigen::Dynamic> dm; // (1, 3 * n_vertices) vertex v dm[3*v], dm[3*v + 1], dm[3*v + 2]
 	Eigen::Matrix<double, 3, Eigen::Dynamic> dc; // (3, 3 * n_vertices)	
 	bool cog_computed = false;
+	bool started_mesh_manipulation = false;
 
 	int weight_type = 0; // Type of weights to compute
 	                     // 0 = Nearest Neighbor
