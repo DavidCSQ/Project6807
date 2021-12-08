@@ -124,6 +124,7 @@ public:
 				handles.reset_handle_transformations();
 				viewer->data().set_vertices(V);
 				draw_handles();
+				//fixed = false;
 			}
 			// Only allow handle manipulation when there are handles to manipulate
 			if (handles.positions().rows() > 0) {
@@ -154,7 +155,13 @@ public:
 			if (ImGui::Button("Compute Center Of Gravity")) {
 				compute_cog();
 			}
+			if (ImGui::Button("Optimize current view")) {
+				optimize();
+			}
 
+			if (ImGui::Button("Fix all the created handles")) {
+				n_handles = handles.positions().rows();
+			}
 			ImGui::NewLine();
 			if (ImGui::CollapsingHeader("Viewer Options")) {
 				make_checkbox("Wireframe", viewer->data().show_lines);
@@ -162,7 +169,48 @@ public:
 			}
 		}
 	}
-
+    void optimize(){//assume in manipulate mode
+        int maxiter = 10;
+        for(int i = 0;i<maxiter;i++){
+		    //compute_weights();
+            compute_w_opt();
+            Eigen::ConjugateGradient<Eigen::MatrixXd, Eigen::Upper> solver;
+            solver.setMaxIterations(1000000); //just a large number
+            Eigen::MatrixXd K = dch.block(0,n_handles*3,3,(handles.positions().rows()-n_handles)*3);
+            Eigen::Vector3d fe = Eigen::Vector3d(sc[0]-c[0],sc[1]-c[1],0);
+			if (fe.norm()<1e-6) break;
+			Eigen::VectorXd u = solver.compute(K).solve(fe);
+			Eigen::MatrixXd H;
+			handles.transfored_handles(H);
+			std::cout<<"ftest\n" <<K*u+c<<"\n current pos\n"<<H.row(n_handles)<<"\n u\n" << u << std::endl;
+			//Eigen::VectorXd u = Eigen::Vector3d(0.03,0.03,0.03);
+			//Eigen::Vector3d ftest = K*u + c;
+            //std::cout << "Time to solve" << "\n K\n" << K << "\n fe\n" << fe << "\n c\n" << c <<"\n u\n" << u << std::endl;
+		    //std::cout << "ftest\n" << ftest << std::endl;
+			for(int j = n_handles;j<handles.positions().rows();j++){
+				Eigen::RowVector3d position = handles.transform().block(4 * j + 3, 0, 1, 3);
+			    Eigen::Vector3d pos = Eigen::Vector3d(position[0]+handles.positions().row(j)[0]+u[(j-n_handles)*3],position[1]+handles.positions().row(j)[1]+u[(j-n_handles)*3+1],position[2]+handles.positions().row(j)[2]+u[(j-n_handles)*3+2]);
+                handles.move_handle(
+				    j,
+				    pos);
+			    std::cout<<"newpos"<<pos;
+			}
+			//std::cout<<"nhandles"<<n_handles<<"max"<<handles.positions().rows();
+			viewer->data().set_vertices(lbs_mat * handles.transform());
+			draw_handles();
+			compute_cog();
+			//if (fe.norm()<1e-6) break;
+			
+		}
+		double ddm = 0;
+		Eigen::Vector3d ddc;
+		ddc.setZero();
+		for(int i = 0; i < viewer->data().V.rows();i++){
+            ddm += (dm[i*3]*(viewer->data().V.row(i)[0]-lbs_mat(i,0))+dm[i*3+1]*(viewer->data().V.row(i)[1]-lbs_mat(i,1))+dm[i*3+2]*(viewer->data().V.row(i)[2]-lbs_mat(i,2)))/18;
+			ddc += (dcf.col(i*3)*(viewer->data().V.row(i)[0]-lbs_mat(i,0))+dcf.col(i*3+1)*(viewer->data().V.row(i)[1]-lbs_mat(i,1))+dcf.col(i*3+2)*(viewer->data().V.row(i)[2]-lbs_mat(i,2)));
+		}
+		//std::cout<< "ddm  " << ddm <<"  ddc  "<<ddc<<std::endl;
+	}
 	Eigen::Vector3d direction_to_support_polyggon() {
 		// Need to compute convex hull of a base plane
 		double bottom = V.col(2).minCoeff();
@@ -177,15 +225,32 @@ public:
 			// We assume the user chose the support polygon to be the base plane of the mesh
 		}
 	}
-
+    void compute_w_opt(){
+		compute_cog();
+		dch.resize(3,3*handles.positions().rows());
+		dch.setZero();
+        for(int f = 0;f<handles.positions().rows();f++){
+			for(int l = 0;l<lbs_mat.rows();l++){
+                dch(0,f*3)+=dcf(0,3*l)*lbs_mat(l,f*4+3);
+				dch(0,f*3+1)+=dcf(0,3*l+1)*lbs_mat(l,f*4+3);
+				dch(0,f*3+2)+=dcf(0,3*l+2)*lbs_mat(l,f*4+3);
+				dch(1,f*3+1)+=dcf(1,3*l+1)*lbs_mat(l,f*4+3);
+				dch(1,f*3)+=dcf(1,3*l)*lbs_mat(l,f*4+3);
+				dch(1,f*3+2)+=dcf(1,3*l+2)*lbs_mat(l,f*4+3);
+				dch(2,f*3+2)+=dcf(2,3*l+2)*lbs_mat(l,f*4+3);
+				dch(2,f*3)+=dcf(2,3*l)*lbs_mat(l,f*4+3);
+				dch(2,f*3+1)+=dcf(2,3*l+1)*lbs_mat(l,f*4+3);
+			}
+		}
+	}
 	void compute_weights() {
 		// Only compute weights if there are weights to compute!
 		Eigen::MatrixXd W;
 		Eigen::VectorXi b;
 		Eigen::MatrixXd bc;
+		compute_cog();
 		handles.boundary_conditions(V, T, b, bc);
 		bounded_biharmonic_weights(V, T, b, bc, W);
-
 		igl::lbs_matrix(V, W, lbs_mat);
 	}
 
@@ -213,6 +278,8 @@ public:
 		dc.resize(3, 3 * V.rows());
 		dm.setZero();
 		dc.setZero();
+		dcf.resize(3, 3 * V.rows());
+		dcf.setZero();
 
 		deformed_V = V;
 		if (handles.positions().rows() > 0) {
@@ -255,17 +322,17 @@ public:
 			c += g.cwiseProduct(normal);
 
 			// derivative of mass contributions
-			dm[3 * vinds[0]] += normal[0];
-			dm[3 * vinds[0] + 1] += (-vsum[0] * e3[2]);
-			dm[3 * vinds[0] + 2] += (vsum[0] * e3[1]);
+			dm[3 * vinds[0]] += normal[0]-vk[1]*vsum[2]+vk[2]*vsum[1]-vj[2]*vsum[1]+vj[1]*vsum[2];
+			dm[3 * vinds[0] + 1] += normal[1]-vk[2]*vsum[0]+vk[0]*vsum[2]-vj[0]*vsum[2]+vj[2]*vsum[0];
+			dm[3 * vinds[0] + 2] += normal[2]-vk[0]*vsum[1]+vk[1]*vsum[0]-vj[1]*vsum[0]+vj[0]*vsum[1];
 
-			dm[3 * vinds[1]] += normal[0];
-			dm[3 * vinds[1] + 1] += (-vsum[0] * e2[2]);
-			dm[3 * vinds[1] + 2] += (vsum[0] * e2[1]);
+			dm[3 * vinds[1]] += normal[0]-vi[1]*vsum[2]+vi[2]*vsum[1]-vk[2]*vsum[1]+vk[1]*vsum[2];
+			dm[3 * vinds[1] + 1] += normal[1]-vi[2]*vsum[0]+vi[0]*vsum[2]-vk[0]*vsum[2]+vk[2]*vsum[0];
+			dm[3 * vinds[1] + 2] += normal[2]-vi[0]*vsum[1]+vi[1]*vsum[0]-vk[1]*vsum[0]+vk[0]*vsum[1];
 
-			dm[3 * vinds[2]] += normal[0];
-			dm[3 * vinds[2] + 1] += (-vsum[0] * e1[2]);
-			dm[3 * vinds[2] + 2] += (vsum[0] * e1[1]);
+			dm[3 * vinds[2]] += normal[0]-vj[1]*vsum[2]+vj[2]*vsum[1]-vi[2]*vsum[1]+vi[1]*vsum[2];
+			dm[3 * vinds[2] + 1] += normal[1]-vj[2]*vsum[0]+vj[0]*vsum[2]-vi[0]*vsum[2]+vi[2]*vsum[0];
+			dm[3 * vinds[2] + 2] += normal[2]-vj[0]*vsum[1]+vj[1]*vsum[0]-vi[1]*vsum[0]+vi[0]*vsum[1];
 
 			// derivative of center of mass contributions
 			// Vector 0 of this face
@@ -328,14 +395,15 @@ public:
 			};
 			dc.col(3 * vinds[2] + 2) += dt;
 		}
-
+		cog_computed = true;
+		for (int l = 0;l<dc.cols();l++){
+			dcf.col(l) += 3*(dc.col(l)-c*dm[l]/m)/(4*m);
+		}
 		m /= 18.0; // Authors divide by 6 which is wrong
 		c /= (24.0 * m);
-		cog_computed = true;
-
 		std::cout << "mass: " << m << std::endl;
 		std::cout << "COG: " << c << std::endl;
-		std::cout << "Derivative of com sample: " << dc.col(0) << std::endl;
+		//std::cout << "Derivative of com sample: " << dcf << std::endl;
 		draw_handles();
 	}
 
@@ -591,7 +659,7 @@ public:
 private:
 
 	igl::opengl::glfw::imgui::ImGuiMenu menu;
-
+    Eigen::Vector3d sc = Eigen::Vector3d({ 1.0, 1.0, 0.0 });//target center of support, for now using 0
 	Eigen::MatrixXd V; // Vertex Positions
 	Eigen::MatrixXd deformed_V; // Theoretically this is the most up to date version of the vertices after a call to compute_cog
 	Eigen::MatrixXi T; // Tetrahedral Elements
@@ -605,6 +673,8 @@ private:
 	Eigen::Vector3d c;
 	Eigen::Matrix<double, 1, Eigen::Dynamic> dm; // (1, 3 * n_vertices) vertex v dm[3*v], dm[3*v + 1], dm[3*v + 2]
 	Eigen::Matrix<double, 3, Eigen::Dynamic> dc; // (3, 3 * n_vertices)	
+	Eigen::Matrix<double, 3, Eigen::Dynamic> dcf; // (3, 3 * n_vertices)	
+	Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> dch; // (3,3*n_handles)
 	bool cog_computed = false;
 	bool started_mesh_manipulation = false;
 
@@ -624,4 +694,6 @@ private:
 	// Handle Manipulation State
 	int moving_handle_id = -1;
 	Eigen::RowVector3d sel_pos; // Position of handle when it was selected
+	//bool fixed = false;
+	int n_handles = 0;
 };
