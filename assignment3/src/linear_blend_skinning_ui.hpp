@@ -165,12 +165,14 @@ public:
 				else will_stand = "No";
 				ImGui::Text(will_stand.c_str());
 			}
-			if (ImGui::Button("Optimize current view")) {
+			if (create_handle_mode == 1 && ImGui::Button("Optimize current view")) {
 				optimize();
 			}
 
 			if (ImGui::Button("Fix all the created handles")) {
 				n_handles = handles.positions().rows();
+				draw_handles();
+				draw_support_polygon();
 			}
 			ImGui::NewLine();
 			if (ImGui::CollapsingHeader("Viewer Options")) {
@@ -187,7 +189,8 @@ public:
             Eigen::ConjugateGradient<Eigen::MatrixXd, Eigen::Upper> solver;
             solver.setMaxIterations(1000000); //just a large number
             Eigen::MatrixXd K = dch.block(0,n_handles*3,3,(handles.positions().rows()-n_handles)*3);
-            Eigen::Vector3d fe = Eigen::Vector3d(sc[0]-c[0],sc[1]-c[1],0);
+            //Eigen::Vector3d fe = Eigen::Vector3d(support_center[0]-c[0],support_center[1]-c[1],0);
+            Eigen::Vector3d fe = Eigen::Vector3d(support_center[0]-c[0],0,support_center[2]-c[2]);
 			if (fe.norm()<1e-6) break;
 			Eigen::VectorXd u = solver.compute(K).solve(fe);
 			Eigen::MatrixXd H;
@@ -208,6 +211,7 @@ public:
 			//std::cout<<"nhandles"<<n_handles<<"max"<<handles.positions().rows();
 			viewer->data().set_vertices(lbs_mat * handles.transform());
 			draw_handles();
+			draw_support_polygon();
 			compute_cog();
 			//if (fe.norm()<1e-6) break;
 			
@@ -445,7 +449,7 @@ public:
 	{
 		moving_handle_id = -1;
 		draw_handles();
-		if (support_convex_hull.size() > 2) draw_support_polygon();
+		compute_cog();
 		// Check to see if click or rotation
 		double dx = viewer->current_mouse_x - viewer->down_mouse_x;
 		double dy = viewer->current_mouse_y - viewer->down_mouse_y;
@@ -602,9 +606,15 @@ public:
 			point_colors.row(oldrows) = Eigen::Vector3d({ 0.0, 0.5, 0.5 });
 		}
 
+		// fixed handles make black
+		for (int i = 0; i < n_handles; i++) {
+			point_colors.row(i) = Eigen::Vector3d({ 0., 0., 0. });
+		}
+
 		viewer->data().clear_labels();
 		viewer->data().set_points(points, point_colors);
 		viewer->data().set_edges(points, lines, line_colors);
+		if (support_convex_hull.size() > 2) draw_support_polygon();
 }
 
 	void draw_support_polygon() {
