@@ -146,7 +146,6 @@ public:
 				if (ImGui::Button("Recompute Support")) {
 					set_support_vertices();
 					draw_handles();
-					draw_support_polygon();
 				}
 
 				ImGui::NewLine();
@@ -155,7 +154,6 @@ public:
 			if (ImGui::Button("Compute Center Of Gravity")) {
 				compute_cog();
 				draw_handles();
-				draw_support_polygon();
 			}
 
 			if (cog_computed) {
@@ -172,7 +170,6 @@ public:
 			if (ImGui::Button("Fix all the created handles")) {
 				n_handles = handles.positions().rows();
 				draw_handles();
-				draw_support_polygon();
 			}
 			ImGui::NewLine();
 			if (ImGui::CollapsingHeader("Viewer Options")) {
@@ -211,7 +208,6 @@ public:
 			//std::cout<<"nhandles"<<n_handles<<"max"<<handles.positions().rows();
 			viewer->data().set_vertices(lbs_mat * handles.transform());
 			draw_handles();
-			draw_support_polygon();
 			compute_cog();
 			//if (fe.norm()<1e-6) break;
 			
@@ -438,7 +434,6 @@ public:
 				moving_handle_id = best;
 				sel_pos = H.row(best);
 				draw_handles();
-				draw_support_polygon();
 				return true;
 			}
 		}
@@ -467,7 +462,6 @@ public:
 					Eigen::Vector3d pos = viewer->data().V.row(v);
 					handles.add_point_handle(pos);
 					draw_handles();
-					if (support_convex_hull.size() > 2) draw_support_polygon();
 					return true;
 				}
 			}
