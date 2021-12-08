@@ -153,6 +153,16 @@ public:
 
 			if (ImGui::Button("Compute Center Of Gravity")) {
 				compute_cog();
+				draw_handles();
+				draw_support_polygon();
+			}
+
+			if (cog_computed) {
+				ImGui::Text("Will it stand?");
+				std::string will_stand;
+				if (will_it_stand(c)) will_stand = "Yes";
+				else will_stand = "No";
+				ImGui::Text(will_stand.c_str());
 			}
 
 			ImGui::NewLine();
@@ -549,6 +559,17 @@ public:
 		}
 
 		viewer->data().add_edges(P1, P2, Eigen::RowVector3d(0., 1., 0.));
+	}
+
+	bool will_it_stand(Eigen::Vector3d center_of_gravity) {
+		for (int i = 0; i < support_convex_hull.size(); i++) {
+			Eigen::Vector3d point = V.row(support_convex_hull[i]);
+			Eigen::Vector3d dir_to_support_center = support_center - point;
+			Eigen::Vector3d dir_to_center_of_gravity = center_of_gravity - point;
+			point[1] = 0.; dir_to_support_center[1] = 0.; dir_to_center_of_gravity[1] = 0.;
+			if (dir_to_support_center.dot(dir_to_center_of_gravity) < 0) return false;
+		}
+		return true;
 	}
 
 	void compute_support_convex_hull() {
