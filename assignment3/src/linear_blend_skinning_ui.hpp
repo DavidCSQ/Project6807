@@ -142,7 +142,7 @@ public:
 			
 			if (!started_mesh_manipulation) {
 				ImGui::Text("Support Point Threshold:");
-				ImGui::DragFloat("Threshold", &support_threshold, 0.01, 0.5, 1.5);
+				ImGui::DragFloat("Threshold", &support_threshold, 0.1f, 0.001 * (max_vertex_height - min_vertex_height), 0.1 * (max_vertex_height - min_vertex_height));
 				if (ImGui::Button("Recompute Support")) {
 					set_support_vertices();
 					draw_handles();
@@ -154,6 +154,16 @@ public:
 
 			if (ImGui::Button("Compute Center Of Gravity")) {
 				compute_cog();
+				draw_handles();
+				draw_support_polygon();
+			}
+
+			if (cog_computed) {
+				ImGui::Text("Will it stand?");
+				std::string will_stand;
+				if (will_it_stand(c)) will_stand = "Yes";
+				else will_stand = "No";
+				ImGui::Text(will_stand.c_str());
 			}
 			if (ImGui::Button("Optimize current view")) {
 				optimize();
@@ -533,10 +543,13 @@ public:
 	
 	void set_support_vertices() {
 		double minheight = std::numeric_limits<double>::max();
+		double maxheight = std::numeric_limits<double>::min();
 		for (int i = 0; i < V.rows(); i++) {
 			if (V.row(i)[1] < minheight) minheight = V.row(i)[1];
+			if (V.row(i)[1] > maxheight) maxheight = V.row(i)[1];
 		}
 		min_vertex_height = minheight;
+		max_vertex_height = maxheight;
 		std::cout << "MIN HEIGHT: " << minheight << std::endl;
 		
 		// Include thrheshold just in case we have other vertices super close to base plane
@@ -616,15 +629,26 @@ public:
 		viewer->data().add_edges(P1, P2, Eigen::RowVector3d(0., 1., 0.));
 	}
 
+	bool will_it_stand(Eigen::Vector3d center_of_gravity) {
+		for (int i = 0; i < support_convex_hull.size(); i++) {
+			Eigen::Vector3d point = V.row(support_convex_hull[i]);
+			Eigen::Vector3d dir_to_support_center = support_center - point;
+			Eigen::Vector3d dir_to_center_of_gravity = center_of_gravity - point;
+			point[1] = 0.; dir_to_support_center[1] = 0.; dir_to_center_of_gravity[1] = 0.;
+			if (dir_to_support_center.dot(dir_to_center_of_gravity) < 0) return false;
+		}
+		return true;
+	}
+
 	void compute_support_convex_hull() {
 		// Andrew's monotone chain convex hull algorithm
-		assert(support_vertices.size() > 2); // Necessary for a legitimate support polygon to exist
+		if (support_vertices.size() <= 2) return; // Do not recompute unless new support is valid
 
 		std::vector<int> U, L; // indices of vertices in upper and lower hull
 
 		// Lower hull first
 		for (int i = 0; i < support_vertices.size(); i++) {
-			while (L.size() > 2 &&
+			while (L.size() >= 2 &&
 				!ccw(*(L.end() - 2), L.back(), support_vertices[i])) {
 				L.pop_back();
 			}
@@ -633,7 +657,7 @@ public:
 
 		// Upper hull
 		for (int i = support_vertices.size() - 1; i >= 0; i--) {
-			while (U.size() > 2 &&
+			while (U.size() >= 2 &&
 				!ccw(*(U.end() - 2), U.back(), support_vertices[i])) {
 				U.pop_back();
 			}
@@ -665,7 +689,7 @@ private:
 	Eigen::MatrixXi T; // Tetrahedral Elements
 	Eigen::MatrixXi F; // Triangular Faces of exterior surface
 	float support_threshold = 0.5; // Determine what amount of bottom points are considered support points
-	double min_vertex_height;
+	double min_vertex_height = 0., max_vertex_height = 1.;
 	std::vector<int> support_vertices; // Indices into V for vertices that will define a support plane
 	std::vector<int> support_convex_hull; // Convex hull that represents support polygon
 	Eigen::Vector3d support_center; // Center of support polygon
