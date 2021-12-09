@@ -178,49 +178,41 @@ public:
 			}
 		}
 	}
-    void optimize(){//assume in manipulate mode
-        int maxiter = 10;
-        for(int i = 0;i<maxiter;i++){
-		    //compute_weights();
-            compute_w_opt();
-            Eigen::ConjugateGradient<Eigen::MatrixXd, Eigen::Upper> solver;
-            solver.setMaxIterations(1000000); //just a large number
-            Eigen::MatrixXd K = dch.block(0,n_handles*3,3,(handles.positions().rows()-n_handles)*3);
-            //Eigen::Vector3d fe = Eigen::Vector3d(support_center[0]-c[0],support_center[1]-c[1],0);
-            Eigen::Vector3d fe = Eigen::Vector3d(support_center[0]-c[0],0,support_center[2]-c[2]);
-			if (fe.norm()<1e-6) break;
-			Eigen::VectorXd u = solver.compute(K).solve(fe);
-			Eigen::MatrixXd H;
-			handles.transfored_handles(H);
-			std::cout<<"ftest\n" <<K*u+c<<"\n current pos\n"<<H.row(n_handles)<<"\n u\n" << u << std::endl;
-			//Eigen::VectorXd u = Eigen::Vector3d(0.03,0.03,0.03);
-			//Eigen::Vector3d ftest = K*u + c;
-            //std::cout << "Time to solve" << "\n K\n" << K << "\n fe\n" << fe << "\n c\n" << c <<"\n u\n" << u << std::endl;
-		    //std::cout << "ftest\n" << ftest << std::endl;
-			for(int j = n_handles;j<handles.positions().rows();j++){
-				Eigen::RowVector3d position = handles.transform().block(4 * j + 3, 0, 1, 3);
-			    Eigen::Vector3d pos = Eigen::Vector3d(position[0]+handles.positions().row(j)[0]+u[(j-n_handles)*3],position[1]+handles.positions().row(j)[1]+u[(j-n_handles)*3+1],position[2]+handles.positions().row(j)[2]+u[(j-n_handles)*3+2]);
-                handles.move_handle(
-				    j,
-				    pos);
-			    std::cout<<"newpos"<<pos;
-			}
-			//std::cout<<"nhandles"<<n_handles<<"max"<<handles.positions().rows();
-			viewer->data().set_vertices(lbs_mat * handles.transform());
-			draw_handles();
-			compute_cog();
-			//if (fe.norm()<1e-6) break;
-			
-		}
-		double ddm = 0;
-		Eigen::Vector3d ddc;
-		ddc.setZero();
-		for(int i = 0; i < viewer->data().V.rows();i++){
-            ddm += (dm[i*3]*(viewer->data().V.row(i)[0]-lbs_mat(i,0))+dm[i*3+1]*(viewer->data().V.row(i)[1]-lbs_mat(i,1))+dm[i*3+2]*(viewer->data().V.row(i)[2]-lbs_mat(i,2)))/18;
-			ddc += (dcf.col(i*3)*(viewer->data().V.row(i)[0]-lbs_mat(i,0))+dcf.col(i*3+1)*(viewer->data().V.row(i)[1]-lbs_mat(i,1))+dcf.col(i*3+2)*(viewer->data().V.row(i)[2]-lbs_mat(i,2)));
-		}
-		//std::cout<< "ddm  " << ddm <<"  ddc  "<<ddc<<std::endl;
-	}
+
+	void optimize(){//assume in manipulate mode
+       int maxiter = 10;
+       for(int i = 0;i<maxiter;i++){
+           //compute_weights();
+           for(int j = n_handles;j<handles.positions().rows();j++){
+               compute_w_opt();
+               Eigen::ConjugateGradient<Eigen::MatrixXd, Eigen::Upper> solver;
+               solver.setMaxIterations(1000000); //just a large number
+               Eigen::MatrixXd K = dch.block(0,j*3,3,3);
+               // Eigen::Vector3d fe = Eigen::Vector3d(sc[0]-c[0],sc[1]-c[1],0);
+               Eigen::Vector3d fe = Eigen::Vector3d(support_center[0]-c[0],0,support_center[2]-c[2]);
+               if (fe.norm()<1e-6) break;
+               Eigen::VectorXd u = solver.compute(K).solve(fe);
+               Eigen::MatrixXd H;
+               handles.transfored_handles(H);
+               std::cout<<"ftest\n" <<K*u+c<<"\n current pos\n"<<H.row(n_handles)<<"\n u\n" << u << std::endl;
+               u/=(handles.positions().rows()-n_handles);
+               Eigen::RowVector3d position = handles.transform().block(4 * j + 3, 0, 1, 3);
+               Eigen::Vector3d pos = Eigen::Vector3d(position[0]+handles.positions().row(j)[0]+u[0],position[1]+handles.positions().row(j)[1]+u[1],position[2]+handles.positions().row(j)[2]+u[2]);
+               handles.move_handle(
+                   j,
+                   pos);
+               std::cout<<"newpos"<<pos;
+           }
+           //std::cout<<"nhandles"<<n_handles<<"max"<<handles.positions().rows();
+           viewer->data().set_vertices(lbs_mat * handles.transform());
+           draw_handles();
+           compute_cog();
+           //if (fe.norm()<1e-6) break;
+          
+       }
+   }
+
+
 	Eigen::Vector3d direction_to_support_polyggon() {
 		// Need to compute convex hull of a base plane
 		double bottom = V.col(2).minCoeff();
