@@ -1,1 +1,2 @@
 # Project6807
+This is a class project completed using C++. It is a big project with some of the code written by the course staffs, but I also made a huge contribution. Some of my code examples are in assignment3/src/linear_blend_skinning_ui.hpp, assignment3/src/bounded_biharmonic_weights.hpp, assignment3/src/cotangent_laplacian.hpp, assignment3/src/linear_weights.hpp, assignment3/src/linear_weights.hpp for instance. 
